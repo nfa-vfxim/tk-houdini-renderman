@@ -1,0 +1,47 @@
+# MIT License
+
+# Copyright (c) 2020 Netherlands Film Academy
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+configuration:
+    work_file_template:
+        type: template
+        fields: context, version, [name], *
+        description: >
+            A template which describes the current Houdini work hip file. Used to fetch version.
+
+    output_render_template:
+        type: template
+        fields: context, version, SEQ, [name], [width], [height], *
+        description: >
+            A template which describes the output of the beauty render.
+
+    output_aov_template:
+        type: template
+        fields: context, version, SEQ, [aov_name], [name], [width], [height], *
+        description: >
+            A template which describes the output of the beauty render.
+
+# general info about this app
+display_name: "RenderMan Render Node"
+description: "A ShotGrid Toolkit app to render in Houdini with the RenderMan render engine and Deadline."
+
+# engine constraints
+supported_engines: [tk-houdini]
