@@ -54,6 +54,10 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         work_template = self.get_template("work_file_template")
         return work_template
 
+    def get_publish_template(self):
+        publish_template = self.get_template("output_render_template")
+        return publish_template
+
     @staticmethod
     def get_render_name(node):
         name = node.parm('name').eval()
