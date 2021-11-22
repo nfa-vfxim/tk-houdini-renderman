@@ -98,8 +98,6 @@ class FarmSubmission(QtWidgets.QWidget):
 
         render_filepath = self.node.parm("picture").eval()
 
-        render_name = self.node.parm("name").eval()
-
         output_directory = os.path.dirname(render_filepath)
         output_filename = os.path.basename(render_filepath)
 
@@ -108,8 +106,6 @@ class FarmSubmission(QtWidgets.QWidget):
         )
 
         deadline_path = os.getenv("DEADLINE_PATH")
-
-        python_version = sys.version_info[0]
 
         # Building job info properties
         job_info = [
@@ -144,13 +140,8 @@ class FarmSubmission(QtWidgets.QWidget):
                 )
                 return
 
-        if python_version < 3:
-            temporary_directory = tempfile.mkdtemp()
-            self.app.logger.debug("Created Python 2 temporary directory")
-
-        else:
-            temporary_directory = tempfile.TemporaryDirectory()
-            self.app.logger.debug("Created Python 3 temporary directory")
+        temporary_directory = tempfile.mkdtemp()
+        self.app.logger.debug("Created temporary directory")
 
         try:
             # Writing job_info.txt
@@ -178,7 +169,7 @@ class FarmSubmission(QtWidgets.QWidget):
             ]
 
             execute_submission = check_output(deadline_command)
-            hou.ui.displayMessage(execute_submission)
+            hou.ui.displayMessage("Job successfully submitted to Deadline")
 
         except Exception as e:
             self.app.logger.debug(
@@ -186,12 +177,8 @@ class FarmSubmission(QtWidgets.QWidget):
             )
 
         finally:
-            if python_version < 3:
-                shutil.rmtree(temporary_directory)
-                self.app.logger.debug("Removed Python 2 temporary directory")
-
-            else:
-                temporary_directory.cleanup()
+            shutil.rmtree(temporary_directory)
+            self.app.logger.debug("Removed temporary directory")
 
     def __close_window(self):
         self.app.logger.debug("Canceled submission")
