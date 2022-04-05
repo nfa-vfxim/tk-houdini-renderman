@@ -30,19 +30,20 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         tk_houdini_usdrop = self.import_module("tk_houdini_renderman")
         self.handler = tk_houdini_usdrop.TkRenderManNodeHandler(self)
 
-    def execute_render(self, node):
-        self.handler.execute_render(node)
+    def execute_render(self, node, network):
+        self.handler.execute_render(node, network)
 
-    def submit_to_farm(self, node):
-        self.handler.submit_to_farm(node)
+    def submit_to_farm(self, node, network):
+        self.handler.submit_to_farm(node, network)
 
-    def copy_to_clipboard(self, node):
-        self.handler.copy_to_clipboard(node)
+    def copy_to_clipboard(self, node, network):
+        self.handler.copy_to_clipboard(node, network)
 
     @staticmethod
     def get_all_renderman_nodes():
         # Get all nodes from node type sgtk_hdprman
-        nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
+        lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
+        nodes = lop_nodes + hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
         return nodes
 
     @staticmethod

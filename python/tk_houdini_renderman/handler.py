@@ -34,19 +34,20 @@ class TkRenderManNodeHandler(object):
         self.app = app
         self.sg = self.app.shotgun
 
-    def submit_to_farm(self, node):
-        if not self.__validate_node(node):
+    def submit_to_farm(self, node, network):
+        if not self.__validate_node(node, network):
             return
 
         # Set paths and prepare node
         render_name = node.parm("name").eval()
-        render_path = self.__calculate_path(node)
-        self.__apply_path(node, render_path)
+        render_path = self.__calculate_path(node, network)
+        self.__apply_path(node, render_path, network)
         self.__create_directory(render_path)
 
         # Set filters
-        filters = self.__check_filters(node)
-        self.__set_filter_filename(node, filters)
+        if network == "lop":
+            filters = self.__check_filters(node)
+            self.__set_filter_filename(node, filters)
 
         # Determine basic variables for submission
         file_name = hou.hipFile.name()
@@ -68,27 +69,31 @@ class TkRenderManNodeHandler(object):
 
         # Start submission panel
         global submission
-        submission = FarmSubmission(self.app, node, file_name, "50", framerange)
+        submission = FarmSubmission(self.app, node, file_name, "50", framerange, network=network)
         submission.show()
 
-    def execute_render(self, node):
+    def execute_render(self, node, network):
         # Validate node
-        if not self.__validate_node(node):
+        if not self.__validate_node(node, network):
             return
 
         # Prepare node and set all parameters
-        render_path = self.__calculate_path(node)
-        self.__apply_path(node, render_path)
+        render_path = self.__calculate_path(node, network)
+        self.__apply_path(node, render_path, network)
         self.__create_directory(render_path)
 
         # Set filters
-        filters = self.__check_filters(node)
-        self.__set_filter_filename(node, filters)
+        if network == "lop":
+            filters = self.__check_filters(node)
+            self.__set_filter_filename(node, filters)
 
         # Execute rendering
-        node.node("rop_usdrender").parm("execute").pressButton()
+        if network == "lop":
+            node.node("rop_usdrender").parm("execute").pressButton()
+        else:
+            node.node("ris1").parm("execute").pressButton()
 
-    def copy_to_clipboard(self, node):
+    def copy_to_clipboard(self, node, network):
         # Function to copy the path directly to the clipboard, currently only Windows is supported
         if platform.system() == "Windows":
             render_path = node.parm("picture").eval()
@@ -101,7 +106,7 @@ class TkRenderManNodeHandler(object):
             )
 
     @staticmethod
-    def __validate_node(node):
+    def __validate_node(node, network):
         # This function will make sure all the paramaters are filled in and setup correctly.
         # First we'll check if there is a name
         render_name = node.parm("name").eval()
@@ -113,29 +118,65 @@ class TkRenderManNodeHandler(object):
             return False
         else:
             # Make sure the node has an input to render
-            inputs = node.inputs()
-            if len(inputs) <= 0:
-                hou.ui.displayMessage(
-                    "Node doesn't have input, please connect this "
-                    "ShotGrid RenderMan render node to the stage to render.",
-                    severity=hou.severityType.Error,
-                )
-                return False
+            if network == "lop":
+                inputs = node.inputs()
+                if len(inputs) <= 0:
+                    hou.ui.displayMessage(
+                        "Node doesn't have input, please connect this "
+                        "ShotGrid RenderMan render node to the stage to render.",
+                        severity=hou.severityType.Error,
+                    )
+                    return False
+                else:
+                    return True
             else:
                 return True
 
-    def __calculate_path(self, node):
+    def __calculate_path(self, node, network):
         # Get all necessary data
         current_filepath = hou.hipFile.path()
         work_template = self.app.get_template("work_file_template")
         render_template = self.app.get_template("output_render_template")
 
+        resolution_x_field = "resolutionx"
+        resolution_y_field = "resolutiony"
+
+        resolution_x = 0
+        resolution_y = 0
+
+        evaluate_parm = True
+
+        # Because RenderMan in the rop network uses different parameter names, we need to change some bits
+        if network == "rop":
+            camera = node.parm("camera").eval()
+
+            evaluate_parm = False
+            resolution_x = hou.node(camera).parm("resx").eval()
+            resolution_y = hou.node(camera).parm("resy").eval()
+
+            if node.parm("override_camerares").eval():
+                res_fraction = node.parm("res_fraction").eval()
+
+                if res_fraction == "specific":
+                    evaluate_parm = True
+                    resolution_x_field = "res_overridex"
+                    resolution_y_field = "res_overridey"
+
+                else:
+                    resolution_x = resolution_x * res_fraction
+                    resolution_y = resolution_y * res_fraction
+
         # Set fields
         fields = work_template.get_fields(current_filepath)
         fields["SEQ"] = "FORMAT: $F"
         fields["name"] = node.parm("name").eval()
-        fields["width"] = node.parm("resolutionx").eval()
-        fields["height"] = node.parm("resolutiony").eval()
+        if evaluate_parm is True:
+            fields["width"] = node.parm(resolution_x_field).eval()
+            fields["height"] = node.parm(resolution_y_field).eval()
+
+        else:
+            fields["width"] = resolution_x
+            fields["height"] = resolution_y
 
         # Apply fields
         render_path = render_template.apply_fields(fields).replace(os.sep, "/")
@@ -163,9 +204,10 @@ class TkRenderManNodeHandler(object):
 
         return render_path
 
-    def __apply_path(self, node, render_path):
+    def __apply_path(self, node, render_path, network):
         # Set render path on specified node
-        node.parm("picture").set(render_path)
+        parameter = "picture"
+        node.parm(parameter).set(render_path)
         self.app.logger.debug("Set render path on %s" % str(node))
 
     def __create_directory(self, render_path):

@@ -32,11 +32,12 @@ from PySide2 import QtWidgets
 
 
 class FarmSubmission(QtWidgets.QWidget):
-    def __init__(self, app, node, submission_name, priority, framerange, parent=None):
+    def __init__(self, app, node, submission_name, priority, framerange, network, parent=None):
         QtWidgets.QWidget.__init__(self, parent)
         self.setWindowTitle("Submit to Farm")
         self.app = app
         self.node = node
+        self.network = network
 
         layout = QtWidgets.QVBoxLayout()
 
@@ -96,7 +97,8 @@ class FarmSubmission(QtWidgets.QWidget):
         houdini_version = hou.applicationVersion()
         houdini_version = str(houdini_version[0]) + "." + str(houdini_version[1])
 
-        render_filepath = self.node.parm("picture").eval()
+        file_parameter = "picture"
+        render_filepath = self.node.parm(file_parameter).eval()
 
         output_directory = os.path.dirname(render_filepath)
         output_filename = os.path.basename(render_filepath)
