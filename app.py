@@ -36,14 +36,19 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
     def submit_to_farm(self, node, network):
         self.handler.submit_to_farm(node, network)
 
-    def copy_to_clipboard(self, node, network):
+    def copy_to_clipboard(self, node, network=None):
         self.handler.copy_to_clipboard(node, network)
 
     @staticmethod
     def get_all_renderman_nodes():
         # Get all nodes from node type sgtk_hdprman
-        lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
-        nodes = lop_nodes + hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
+        lop_nodes = (
+            hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
+        )
+        nodes = (
+            lop_nodes
+            + hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
+        )
         return nodes
 
     @staticmethod
@@ -61,5 +66,5 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
 
     @staticmethod
     def get_render_name(node):
-        name = node.parm('name').eval()
+        name = node.parm("name").eval()
         return name

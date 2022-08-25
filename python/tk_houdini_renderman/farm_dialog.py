@@ -32,7 +32,16 @@ from PySide2 import QtWidgets
 
 
 class FarmSubmission(QtWidgets.QWidget):
-    def __init__(self, app, node, submission_name, priority, framerange, network, parent=None):
+    def __init__(
+        self,
+        app,
+        node,
+        submission_name,
+        priority,
+        framerange,
+        network,
+        parent=None,
+    ):
         QtWidgets.QWidget.__init__(self, parent)
         self.setWindowTitle("Submit to Farm")
         self.app = app
@@ -95,7 +104,9 @@ class FarmSubmission(QtWidgets.QWidget):
 
         houdini_file = hou.hipFile.name()
         houdini_version = hou.applicationVersion()
-        houdini_version = str(houdini_version[0]) + "." + str(houdini_version[1])
+        houdini_version = (
+            str(houdini_version[0]) + "." + str(houdini_version[1])
+        )
 
         file_parameter = "picture"
         render_filepath = self.node.parm(file_parameter).eval()
@@ -103,9 +114,13 @@ class FarmSubmission(QtWidgets.QWidget):
         output_directory = os.path.dirname(render_filepath)
         output_filename = os.path.basename(render_filepath)
 
-        render_rop_node = os.path.join(self.node.path(), "rop_usdrender").replace(
-            os.sep, "/"
-        )
+        if self.network == "lop":
+            render_rop_node = os.path.join(self.node.path(), "rop_usdrender")
+            render_rop_node = render_rop_node.replace(os.sep, "/")
+
+        else:
+            render_rop_node = os.path.join(self.node.path(), "ris1")
+            render_rop_node = render_rop_node.replace(os.sep, "/")
 
         deadline_path = os.getenv("DEADLINE_PATH")
 
