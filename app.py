@@ -45,15 +45,19 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         lop_nodes = (
             hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
         )
-        nodes = (
-            lop_nodes
-            + hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
-        )
+        rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
+        nodes = lop_nodes + rop_nodes
         return nodes
 
     @staticmethod
     def get_output_path(node):
-        output_path = node.parm("picture").eval()
+
+        if node.type().nameComponents()[2] == "sgtk_ris":
+            parameter = "ri_display_0"
+        else:
+            parameter = "picture"
+
+        output_path = node.parm(parameter).eval()
         return output_path
 
     def get_work_template(self):

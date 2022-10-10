@@ -46,8 +46,12 @@ class TkRenderManNodeHandler(object):
 
         # Set filters
         if network == "lop":
-            filters = self.__check_filters(node)
-            self.__set_filter_filename(node, filters)
+            filters = self.__check_lop_filters(node)
+            self.__set_lop_filter_filename(node, filters)
+
+        if network == "rop":
+            filters = self.__check_rop_filters(node)
+            self.__set_rop_filter_filename(filters, render_node=node)
 
         # Determine basic variables for submission
         file_name = hou.hipFile.name()
@@ -89,8 +93,12 @@ class TkRenderManNodeHandler(object):
 
         # Set filters
         if network == "lop":
-            filters = self.__check_filters(node)
-            self.__set_filter_filename(node, filters)
+            filters = self.__check_lop_filters(node)
+            self.__set_lop_filter_filename(node, filters)
+
+        if network == "rop":
+            filters = self.__check_rop_filters(node)
+            self.__set_rop_filter_filename(filters, render_node=node)
 
         # Execute rendering
         if network == "lop":
@@ -209,7 +217,7 @@ class TkRenderManNodeHandler(object):
 
         return render_path
 
-    def __calculate_filter_path(self, node, filter):
+    def __calculate_filter_path(self, node, filter, render_node=None):
         # Get all necessary data
         current_filepath = hou.hipFile.path()
         work_template = self.app.get_template("work_file_template")
@@ -218,10 +226,20 @@ class TkRenderManNodeHandler(object):
         # Set fields
         fields = work_template.get_fields(current_filepath)
         fields["SEQ"] = "FORMAT: $F"
-        fields["name"] = node.parm("name").eval()
         fields["aov_name"] = filter
-        fields["width"] = node.parm("resolutionx").eval()
-        fields["height"] = node.parm("resolutiony").eval()
+
+        if render_node:
+            fields["name"] = render_node.parm("name").eval()
+            camera = render_node.parm("camera").eval()
+            resolution_x = hou.node(camera).parm("resx").eval()
+            resolution_y = hou.node(camera).parm("resy").eval()
+            fields["width"] = resolution_x
+            fields["height"] = resolution_y
+
+        else:
+            fields["name"] = node.parm("name").eval()
+            fields["width"] = node.parm("resolutionx").eval()
+            fields["height"] = node.parm("resolutiony").eval()
 
         # Apply fields
         render_path = render_template.apply_fields(fields).replace(os.sep, "/")
@@ -250,7 +268,36 @@ class TkRenderManNodeHandler(object):
             self.app.logger.debug("Created directory %s." % directory)
 
     @staticmethod
-    def __check_filters(node):
+    def __check_rop_filters(node):
+
+        # Create list to appends filters to
+        filters = []
+
+        # We have two types of filters
+        filter_types = ["displayfilter", "samplefilter"]
+
+        # Iterate trough filters
+        for filter_type in filter_types:
+
+            # Get amount of filters for filter type
+            filter_amount = node.parm("ri_%ss" % filter_type).eval()
+
+            # Iterate trough amount of existing filters
+            for filter_number in range(0, filter_amount):
+
+                # Create parameter name to search for values
+                parm_name = "ri_%s%s" % (filter_type, str(filter_number))
+
+                # Get value of parameter
+                filter_parameter = node.parm(parm_name).eval()
+
+                # Add to list
+                filters.append(filter_parameter)
+
+        return filters
+
+    @staticmethod
+    def __check_lop_filters(node):
         # Amount of groups in the filter tab in the node
         tabs = range(0, 5)
 
@@ -282,7 +329,25 @@ class TkRenderManNodeHandler(object):
         # Return
         return filters
 
-    def __set_filter_filename(self, node, filters):
+    def __set_rop_filter_filename(self, filters, render_node):
+        # Iterate trough filters
+        for node in filters:
+
+            # Get node shader network
+            node = hou.node(node)
+
+            # Get node type
+            node_type = node.type().nameComponents()[2]
+
+            # Calculate render path
+            render_path = self.__calculate_filter_path(
+                node, node_type, render_node=render_node
+            )
+
+            # Set render path
+            node.parm("filename").set(render_path)
+
+    def __set_lop_filter_filename(self, node, filters):
         # This function will process the filter specfied, and
         # populate the path if it is possible to do
         for item in filters:
@@ -304,9 +369,43 @@ class TkRenderManNodeHandler(object):
             parameter.set(render_path)
 
     def get_filters_output(self, node):
+
+        if node.type().nameComponents()[2] == "sgtk_ris":
+            filter_passes = self.__get_filters_rop_output(node)
+
+        else:
+            filter_passes = self.__get_filters_lop_output(node)
+
+        return filter_passes
+
+    def __get_filters_rop_output(self, node):
+        filters = self.__check_rop_filters(node)
+        filter_passes = []
+        for node in filters:
+
+            # Get node shader network
+            node = hou.node(node)
+
+            # Get node type
+            node_type = node.nameComponents()[2]
+
+            parameter = node.parm("filename")
+
+            if parameter is None:
+                continue
+
+            # Build a dictionary per item, containing the name of the
+            # filter and the path where the file is rendered to
+            rendered_filter = {"name": node_type, "path": parameter.eval()}
+
+            filter_passes.append(rendered_filter)
+
+        return filters
+
+    def __get_filters_lop_output(self, node):
         # This function will check every item in the filters group,
         # and return the file paths that are in there
-        filters = self.__check_filters(node)
+        filters = self.__check_lop_filters(node)
         filter_passes = []
         for item in filters:
             # Look at our dictionary and get the keys/values supplied
@@ -345,7 +444,13 @@ class TkRenderManNodeHandler(object):
         regex = r"[$][fF]\d"
 
         # Get the raw string from the picture parameter
-        file_path = node.parm("picture").rawValue()
+
+        if node.type().nameComponents()[2] == "sgtk_ris":
+            parameter = "ri_display_0"
+        else:
+            parameter = "picture"
+
+        file_path = node.parm(parameter).rawValue()
 
         # Detect "$F4" in the file path, and return it
         frame_match = re.search(regex, file_path)
