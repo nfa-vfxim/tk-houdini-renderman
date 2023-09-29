@@ -37,6 +37,11 @@ class TkRenderManNodeHandler(object):
         self.sg = self.app.shotgun
 
     def submit_to_farm(self, node, network):
+        """Start farm render
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         # Create directories
         render_name = node.parm("name").eval()
         render_paths = node.type().hdaModule().get_render_paths()
@@ -70,6 +75,11 @@ class TkRenderManNodeHandler(object):
         submission.show()
 
     def execute_render(self, node, network):
+        """Start local render
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         # Create directories
         render_paths = node.type().hdaModule().get_render_paths()
         for p in render_paths:
@@ -96,9 +106,8 @@ class TkRenderManNodeHandler(object):
         """Function to copy the path directly to the clipboard,
         currently only Windows is supported
 
-        Args:
-            :param node: node to get clipboard from
-            :param network:
+        :param node: RenderMan node to get clipboard from
+        :param network: Network type
         """
 
         # Function to copy the path directly to the clipboard,
@@ -120,8 +129,12 @@ class TkRenderManNodeHandler(object):
 
     @staticmethod
     def validate_node(node, network):
-        # This function will make sure all the parameters
-        # are filled in and setup correctly.
+        """This function will make sure all the parameters
+        are filled in and setup correctly.
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         # First we'll check if there is a name
         render_name = node.parm("name").eval()
         if render_name == "":
@@ -251,7 +264,10 @@ class TkRenderManNodeHandler(object):
         self.app.logger.debug("Set render path on %s" % str(node))
 
     def __create_directory(self, render_path):
-        # Create directory to render to
+        """Create directory to render to
+
+        :param render_path: Render path to create directory for
+        """
         directory = os.path.dirname(render_path)
 
         # If directory doesn't exist, create it
@@ -415,10 +431,13 @@ class TkRenderManNodeHandler(object):
         return filter_passes
 
     def get_published_status(self, node):
-        # This function will check on ShotGrid if there is a publish
-        # with exactly the same name on the project. If
-        # there is a publish existing it will return a "True" value,
-        # otherwise a "False" value
+        """This function will check on ShotGrid if there is a publish
+        with exactly the same name on the project. If
+        there is a publish existing it will return a "True" value,
+        otherwise a "False" value
+
+        :param node: RenderMan node
+        """
         sg = self.sg
 
         # Define the regex to detect the Houdini "$F4" expressions

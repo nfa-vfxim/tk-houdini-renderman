@@ -52,23 +52,44 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
             )
 
     def execute_render(self, node, network):
+        """Start farm render
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         self.handler.execute_render(node, network)
 
     def submit_to_farm(self, node, network):
+        """Start local render
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         self.handler.submit_to_farm(node, network)
 
     def copy_to_clipboard(self, node, network=None):
+        """Copy render path to clipboard
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         self.handler.copy_to_clipboard(node, network)
 
     @staticmethod
     def get_all_renderman_nodes():
-        # Get all nodes from node type sgtk_hdprman
+        """Get all nodes from node type sgtk_hdprman"""
         lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
         rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
         nodes = lop_nodes + rop_nodes
         return nodes
 
     def get_output_path(self, node, aov_name, network="rop"):
+        """Calculate render path for an aov
+
+        :param node: RenderMan node
+        :param aov_name: AOV name
+        :param network: Network type
+        """
         current_filepath = hou.hipFile.path()
 
         work_template = self.get_template("work_file_template")
@@ -119,20 +140,33 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         return render_template.apply_fields(fields).replace(os.sep, "/")
 
     def get_metadata_config(self):
+        """Get Metadata config from ShotGrid"""
         return self.get_setting("render_metadata")
 
     def validate_node(self, node, network):
+        """This function will make sure all the parameters
+        are filled in and setup correctly.
+
+        :param node: RenderMan node
+        :param network: Network type
+        """
         return self.handler.validate_node(node, network)
 
     def get_work_template(self):
+        """Get work file template from ShotGrid"""
         work_template = self.get_template("work_file_template")
         return work_template
 
     def get_publish_template(self):
+        """Get render file template from ShotGrid"""
         publish_template = self.get_template("output_render_template")
         return publish_template
 
     @staticmethod
     def get_render_name(node):
+        """Get render name from node
+
+        :param: RenderMan node
+        """
         name = node.parm("name").eval()
         return name
