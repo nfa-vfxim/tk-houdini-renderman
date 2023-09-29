@@ -1,5 +1,6 @@
 # Source: https://github.com/BreakTools/Snippets/blob/main/get_smart_frame_list.py
 
+
 def get_smart_frame_list(input_frame_range: str, task_size: int) -> str:
     """This function receives a frame range and a task size. It then
     calculations a 'smart' frame list for deadline. This list is formatted

@@ -45,9 +45,7 @@ class TkRenderManNodeHandler(object):
 
         # Determine basic variables for submission
         file_name = hou.hipFile.name()
-        file_name = (
-            os.path.basename(file_name).split(".")[0] + " (%s)" % render_name
-        )
+        file_name = os.path.basename(file_name).split(".")[0] + " (%s)" % render_name
 
         # Determine framerange
         framerange_type = node.parm("trange").eval()
@@ -90,7 +88,9 @@ class TkRenderManNodeHandler(object):
         if network == "lop":
             node.node("rop_usdrender").parm("execute").pressButton()
         else:
-            node.node("denoise" if node.evalParm("denoise") else "render").parm("execute").pressButton()
+            node.node("denoise" if node.evalParm("denoise") else "render").parm(
+                "execute"
+            ).pressButton()
 
     def copy_to_clipboard(self, node, network=None):
         """Function to copy the path directly to the clipboard,
@@ -111,9 +111,7 @@ class TkRenderManNodeHandler(object):
 
             render_path = node.parm(parameter).eval()
             render_path = os.path.dirname(render_path).replace("/", os.sep)
-            copy_to_clipboard = (
-                'echo|set /p="' + render_path.strip() + '"| clip'
-            )
+            copy_to_clipboard = 'echo|set /p="' + render_path.strip() + '"| clip'
             os.system(copy_to_clipboard)
         else:
             self.app.logger.debug(
@@ -135,8 +133,10 @@ class TkRenderManNodeHandler(object):
             return False
 
         # Check if camera exists
-        elif not hou.node(node.evalParm('camera')):
-            hou.ui.displayMessage('Invalid camera path.', severity=hou.severityType.Error)
+        elif not hou.node(node.evalParm("camera")):
+            hou.ui.displayMessage(
+                "Invalid camera path.", severity=hou.severityType.Error
+            )
             return False
 
         else:
@@ -261,7 +261,6 @@ class TkRenderManNodeHandler(object):
 
     @staticmethod
     def __check_rop_filters(node):
-
         # Create list to appends filters to
         filters = []
 
@@ -270,13 +269,11 @@ class TkRenderManNodeHandler(object):
 
         # Iterate trough filters
         for filter_type in filter_types:
-
             # Get amount of filters for filter type
             filter_amount = node.parm("ri_%ss" % filter_type).eval()
 
             # Iterate trough amount of existing filters
             for filter_number in range(0, filter_amount):
-
                 # Create parameter name to search for values
                 parm_name = "ri_%s%s" % (filter_type, str(filter_number))
 
@@ -324,7 +321,6 @@ class TkRenderManNodeHandler(object):
     def __set_rop_filter_filename(self, filters, render_node):
         # Iterate trough filters
         for node in filters:
-
             # Get node shader network
             node = hou.node(node)
 
@@ -348,9 +344,7 @@ class TkRenderManNodeHandler(object):
             value = item.get("value")
 
             # Build the paramater name
-            parameter_name = hou.encode(
-                "ri:" + group + ":" + value + ":filename"
-            )
+            parameter_name = hou.encode("ri:" + group + ":" + value + ":filename")
             parameter = node.parm(parameter_name)
 
             # If there is no "filename" parameter, skip this one
@@ -361,7 +355,6 @@ class TkRenderManNodeHandler(object):
             parameter.set(render_path)
 
     def get_filters_output(self, node):
-
         if node.type().nameComponents()[2] == "sgtk_ris":
             filter_passes = self.__get_filters_rop_output(node)
 
@@ -374,7 +367,6 @@ class TkRenderManNodeHandler(object):
         filters = self.__check_rop_filters(node)
         filter_passes = []
         for node in filters:
-
             # Get node shader network
             node = hou.node(node)
 
@@ -405,9 +397,7 @@ class TkRenderManNodeHandler(object):
             value = item.get("value")
 
             # Build the paramater name
-            parameter_name = hou.encode(
-                "ri:" + group + ":" + value + ":filename"
-            )
+            parameter_name = hou.encode("ri:" + group + ":" + value + ":filename")
             parameter = node.parm(parameter_name)
 
             # If there is no "filename" parameter, skip this one
@@ -453,9 +443,7 @@ class TkRenderManNodeHandler(object):
         padding_length = padding_length.group(0)
 
         # Replace $F4 with %04d format
-        file_name = file_path.replace(
-            frame_match, "%0" + str(padding_length) + "d"
-        )
+        file_name = file_path.replace(frame_match, "%0" + str(padding_length) + "d")
         file_name = os.path.basename(file_name)
 
         # Get current project ID

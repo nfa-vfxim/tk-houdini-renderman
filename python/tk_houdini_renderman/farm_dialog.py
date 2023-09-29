@@ -146,16 +146,17 @@ class FarmSubmission(QtWidgets.QWidget):
 
         houdini_file = hou.hipFile.name()
         houdini_version = hou.applicationVersion()
-        houdini_version = (
-            str(houdini_version[0]) + "." + str(houdini_version[1])
-        )
+        houdini_version = str(houdini_version[0]) + "." + str(houdini_version[1])
 
         if self.network == "lop":
             render_rop_node = os.path.join(self.node.path(), "rop_usdrender")
             render_rop_node = render_rop_node.replace(os.sep, "/")
 
         else:
-            render_rop_node = os.path.join(self.node.path(), "denoise" if self.node.evalParm("denoise") else "render")
+            render_rop_node = os.path.join(
+                self.node.path(),
+                "denoise" if self.node.evalParm("denoise") else "render",
+            )
             render_rop_node = render_rop_node.replace(os.sep, "/")
 
         deadline_path = os.getenv("DEADLINE_PATH")
@@ -175,8 +176,8 @@ class FarmSubmission(QtWidgets.QWidget):
         for i, p in enumerate(self.render_paths):
             output_directory = os.path.dirname(p)
             job_info.append("OutputDirectory{}={}".format(i, output_directory))
-            if not p.endswith('denoise'):
-                output_filename = os.path.basename(p).replace('$F4', '%04d')
+            if not p.endswith("denoise"):
+                output_filename = os.path.basename(p).replace("$F4", "%04d")
                 job_info.append("OutputFilename{}={}".format(i, output_filename))
 
         # Building plugin info properties

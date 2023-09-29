@@ -32,18 +32,24 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         tk_houdini_usdrop = self.import_module("tk_houdini_renderman")
         self.handler = tk_houdini_usdrop.TkRenderManNodeHandler(self)
 
-        types = ('string', 'int', 'float')
+        types = ("string", "int", "float")
         failed = False
         for md in self.get_metadata_config():
-            if md.get('key') == 'groups':
+            if md.get("key") == "groups":
                 self.logger.error('Reserved metadata key "groups" was used.')
                 failed = True
-            if md.get('type') not in types:
-                self.logger.error('Invalid metadata type for key {}: {}'.format(md.get('key'), md.get('type')))
+            if md.get("type") not in types:
+                self.logger.error(
+                    "Invalid metadata type for key {}: {}".format(
+                        md.get("key"), md.get("type")
+                    )
+                )
                 failed = True
         if failed:
-            raise Exception('One or more errors occurred while validating the metadata config. Please check the config '
-                            'and try again.')
+            raise Exception(
+                "One or more errors occurred while validating the metadata config. Please check the config "
+                "and try again."
+            )
 
     def execute_render(self, node, network):
         self.handler.execute_render(node, network)
@@ -57,9 +63,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
     @staticmethod
     def get_all_renderman_nodes():
         # Get all nodes from node type sgtk_hdprman
-        lop_nodes = (
-            hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
-        )
+        lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
         rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
         nodes = lop_nodes + rop_nodes
         return nodes
@@ -103,7 +107,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         fields = work_template.get_fields(current_filepath)
         fields["SEQ"] = "FORMAT: $F"
         fields["output"] = node.parm("name").eval()
-        fields['aov_name'] = aov_name
+        fields["aov_name"] = aov_name
         if evaluate_parm is True:
             fields["width"] = node.parm(resolution_x_field).eval()
             fields["height"] = node.parm(resolution_y_field).eval()
@@ -115,7 +119,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         return render_template.apply_fields(fields).replace(os.sep, "/")
 
     def get_metadata_config(self):
-        return self.get_setting('render_metadata')
+        return self.get_setting("render_metadata")
 
     def validate_node(self, node, network):
         return self.handler.validate_node(node, network)
