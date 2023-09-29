@@ -20,11 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import sgtk
-import hou
 import os
-import re
 import platform
+import re
+
+import hou
+import sgtk
+
 from .farm_dialog import FarmSubmission
 
 
@@ -35,23 +37,11 @@ class TkRenderManNodeHandler(object):
         self.sg = self.app.shotgun
 
     def submit_to_farm(self, node, network):
-        if not self.__validate_node(node, network):
-            return
-
-        # Set paths and prepare node
+        # Create directories
         render_name = node.parm("name").eval()
-        render_path = self.__calculate_path(node, network)
-        self.__apply_path(node, render_path, network)
-        self.__create_directory(render_path)
-
-        # Set filters
-        if network == "lop":
-            filters = self.__check_lop_filters(node)
-            self.__set_lop_filter_filename(node, filters)
-
-        if network == "rop":
-            filters = self.__check_rop_filters(node)
-            self.__set_rop_filter_filename(filters, render_node=node)
+        render_paths = node.type().hdaModule().get_render_paths()
+        for p in render_paths:
+            self.__create_directory(p)
 
         # Determine basic variables for submission
         file_name = hou.hipFile.name()
@@ -67,8 +57,8 @@ class TkRenderManNodeHandler(object):
             framerange = str(start_frame) + "-" + str(end_frame)
         else:
             current_frame = int(hou.frame())
-            print(current_frame)
             framerange = str(current_frame) + "-" + str(current_frame)
+        # TODO add increment parameter
 
         # Open node so it will work on the farm
         # even if the node is not installed
@@ -77,47 +67,43 @@ class TkRenderManNodeHandler(object):
         global submission
         # Start submission panel
         submission = FarmSubmission(
-            self.app, node, file_name, "50", framerange, network=network
+            self.app, node, file_name, 50, framerange, render_paths, network=network
         )
         submission.show()
 
     def execute_render(self, node, network):
-        # Validate node
-        if not self.__validate_node(node, network):
-            return
+        # Create directories
+        render_paths = node.type().hdaModule().get_render_paths()
+        for p in render_paths:
+            self.__create_directory(p)
 
-        # Prepare node and set all parameters
-        render_path = self.__calculate_path(node, network)
-        self.__apply_path(node, render_path, network)
-        self.__create_directory(render_path)
-
-        # Set filters
-        if network == "lop":
-            filters = self.__check_lop_filters(node)
-            self.__set_lop_filter_filename(node, filters)
-
-        if network == "rop":
-            filters = self.__check_rop_filters(node)
-            self.__set_rop_filter_filename(filters, render_node=node)
+        # # Set filters
+        # if network == "lop":
+        #     filters = self.__check_lop_filters(node)
+        #     self.__set_lop_filter_filename(node, filters)
+        #
+        # if network == "rop":
+        #     filters = self.__check_rop_filters(node)
+        #     self.__set_rop_filter_filename(filters, render_node=node)
 
         # Execute rendering
         if network == "lop":
             node.node("rop_usdrender").parm("execute").pressButton()
         else:
-            node.node("ris1").parm("execute").pressButton()
+            node.node("denoise" if node.evalParm("denoise") else "render").parm("execute").pressButton()
 
     def copy_to_clipboard(self, node, network=None):
         """Function to copy the path directly to the clipboard,
         currently only Windows is supported
 
         Args:
-            node (attribute): node to get clipboard from
+            :param node: node to get clipboard from
+            :param network:
         """
 
         # Function to copy the path directly to the clipboard,
         # currently only Windows is supported
         if platform.system() == "Windows":
-
             if network == "rop":
                 parameter = "ri_display_0"
             else:
@@ -135,7 +121,7 @@ class TkRenderManNodeHandler(object):
             )
 
     @staticmethod
-    def __validate_node(node, network):
+    def validate_node(node, network):
         # This function will make sure all the parameters
         # are filled in and setup correctly.
         # First we'll check if there is a name
@@ -147,6 +133,12 @@ class TkRenderManNodeHandler(object):
                 severity=hou.severityType.Error,
             )
             return False
+
+        # Check if camera exists
+        elif not hou.node(node.evalParm('camera')):
+            hou.ui.displayMessage('Invalid camera path.', severity=hou.severityType.Error)
+            return False
+
         else:
             # Make sure the node has an input to render
             if network == "lop":

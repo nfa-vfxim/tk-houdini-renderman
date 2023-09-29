@@ -20,8 +20,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import sgtk
+import os
+
 import hou
+import sgtk
 
 
 class TkHoudiniRenderMan(sgtk.platform.Application):
@@ -29,6 +31,19 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """Initialize the app."""
         tk_houdini_usdrop = self.import_module("tk_houdini_renderman")
         self.handler = tk_houdini_usdrop.TkRenderManNodeHandler(self)
+
+        types = ('string', 'int', 'float')
+        failed = False
+        for md in self.get_metadata_config():
+            if md.get('key') == 'groups':
+                self.logger.error('Reserved metadata key "groups" was used.')
+                failed = True
+            if md.get('type') not in types:
+                self.logger.error('Invalid metadata type for key {}: {}'.format(md.get('key'), md.get('type')))
+                failed = True
+        if failed:
+            raise Exception('One or more errors occurred while validating the metadata config. Please check the config '
+                            'and try again.')
 
     def execute_render(self, node, network):
         self.handler.execute_render(node, network)
@@ -49,16 +64,61 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         nodes = lop_nodes + rop_nodes
         return nodes
 
-    @staticmethod
-    def get_output_path(node):
+    def get_output_path(self, node, aov_name, network="rop"):
+        current_filepath = hou.hipFile.path()
 
-        if node.type().nameComponents()[2] == "sgtk_ris":
-            parameter = "ri_display_0"
+        work_template = self.get_template("work_file_template")
+        render_template = self.get_template("output_render_template")
+
+        resolution_x_field = "resolutionx"
+        resolution_y_field = "resolutiony"
+
+        resolution_x = 0
+        resolution_y = 0
+
+        evaluate_parm = True
+
+        # Because RenderMan in the rop network uses different
+        # parameter names, we need to change some bits
+        if network == "rop":
+            camera = node.parm("camera").eval()
+
+            evaluate_parm = False
+            resolution_x = hou.node(camera).parm("resx").eval()
+            resolution_y = hou.node(camera).parm("resy").eval()
+
+            if node.parm("override_camerares").eval():
+                res_fraction = node.parm("res_fraction").eval()
+
+                if res_fraction == "specific":
+                    evaluate_parm = True
+                    resolution_x_field = "res_overridex"
+                    resolution_y_field = "res_overridey"
+
+                else:
+                    resolution_x = resolution_x * res_fraction
+                    resolution_y = resolution_y * res_fraction
+
+        # Set fields
+        fields = work_template.get_fields(current_filepath)
+        fields["SEQ"] = "FORMAT: $F"
+        fields["output"] = node.parm("name").eval()
+        fields['aov_name'] = aov_name
+        if evaluate_parm is True:
+            fields["width"] = node.parm(resolution_x_field).eval()
+            fields["height"] = node.parm(resolution_y_field).eval()
+
         else:
-            parameter = "picture"
+            fields["width"] = resolution_x
+            fields["height"] = resolution_y
 
-        output_path = node.parm(parameter).eval()
-        return output_path
+        return render_template.apply_fields(fields).replace(os.sep, "/")
+
+    def get_metadata_config(self):
+        return self.get_setting('render_metadata')
+
+    def validate_node(self, node, network):
+        return self.handler.validate_node(node, network)
 
     def get_work_template(self):
         work_template = self.get_template("work_file_template")

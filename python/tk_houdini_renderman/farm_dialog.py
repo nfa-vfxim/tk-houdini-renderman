@@ -20,15 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import hou
 import os
 import shutil
-import sys
 import tempfile
 from subprocess import check_output
 
-from PySide2 import QtCore
+import hou
 from PySide2 import QtWidgets
+
+from .get_smart_frame_list import get_smart_frame_list
 
 
 class FarmSubmission(QtWidgets.QWidget):
@@ -39,6 +39,7 @@ class FarmSubmission(QtWidgets.QWidget):
         submission_name,
         priority,
         framerange,
+        render_paths,
         network,
         parent=None,
     ):
@@ -46,6 +47,7 @@ class FarmSubmission(QtWidgets.QWidget):
         self.setWindowTitle("Submit to Farm")
         self.app = app
         self.node = node
+        self.render_paths = render_paths
         self.network = network
 
         layout = QtWidgets.QVBoxLayout()
@@ -55,24 +57,60 @@ class FarmSubmission(QtWidgets.QWidget):
         self.submission_name.setMinimumSize(300, 0)
         layout.addWidget(self.submission_label)
         layout.addWidget(self.submission_name)
+        layout.addSpacing(8)
 
         self.priority_label = QtWidgets.QLabel("Priority")
-        self.priority = QtWidgets.QLineEdit(priority)
+        self.priority = QtWidgets.QDoubleSpinBox()
+        self.priority.setDecimals(0)
+        self.priority.setRange(0, 100)
+        self.priority.setValue(priority)
         layout.addWidget(self.priority_label)
         layout.addWidget(self.priority)
+        layout.addSpacing(8)
 
+        self.frames_group = QtWidgets.QWidget()
+        frames_group_layout = QtWidgets.QHBoxLayout()
+        frames_group_layout.setContentsMargins(0, 0, 0, 0)
+
+        self.frame_range = QtWidgets.QWidget()
+        frame_range_group_layout = QtWidgets.QVBoxLayout()
+        frame_range_group_layout.setContentsMargins(0, 0, 4, 0)
         self.framerange_label = QtWidgets.QLabel("Frame Range")
         self.framerange = QtWidgets.QLineEdit(framerange)
-        layout.addWidget(self.framerange_label)
-        layout.addWidget(self.framerange)
+        frame_range_group_layout.addWidget(self.framerange_label)
+        frame_range_group_layout.addWidget(self.framerange)
+        self.frame_range.setLayout(frame_range_group_layout)
+        frames_group_layout.addWidget(self.frame_range)
+
+        self.fpt = QtWidgets.QWidget()
+        fpt_group_layout = QtWidgets.QVBoxLayout()
+        fpt_group_layout.setContentsMargins(4, 0, 0, 0)
+        self.frames_per_task_label = QtWidgets.QLabel("Frames Per Task")
+        self.frames_per_task_line = QtWidgets.QDoubleSpinBox()
+        self.frames_per_task_line.setDecimals(0)
+        self.frames_per_task_line.setRange(0, 100)
+        self.frames_per_task_line.setValue(1)
+        fpt_group_layout.addWidget(self.frames_per_task_label)
+        fpt_group_layout.addWidget(self.frames_per_task_line)
+        self.fpt.setLayout(fpt_group_layout)
+        frames_group_layout.addWidget(self.fpt)
+
+        self.frames_group.setLayout(frames_group_layout)
+        layout.addWidget(self.frames_group)
+        layout.addSpacing(4)
+
+        self.smartframes = QtWidgets.QCheckBox("Use Smart Frame Spreading", self)
+        layout.addWidget(self.smartframes)
+        layout.addSpacing(8)
 
         self.mode_label = QtWidgets.QLabel("Mode")
         self.mode = QtWidgets.QComboBox()
-        modes = ["light", "medium", "heavy"]
+        modes = ["Light", "Medium", "Heavy"]
         self.mode.addItems(modes)
         self.mode.setCurrentIndex(2)
         layout.addWidget(self.mode_label)
         layout.addWidget(self.mode)
+        layout.addSpacing(16)
 
         buttons_layout = QtWidgets.QHBoxLayout()
         self.ok_button = QtWidgets.QPushButton("Submit")
@@ -93,6 +131,10 @@ class FarmSubmission(QtWidgets.QWidget):
         submission_name = self.submission_name.text()
         priority = self.priority.text()
         framerange = self.framerange.text()
+        frames_per_task = int(self.frames_per_task_line.text())
+
+        if self.smartframes.isChecked():
+            framerange = get_smart_frame_list(framerange, frames_per_task)
 
         mode = self.mode.currentIndex()
         if mode == 0:
@@ -108,18 +150,12 @@ class FarmSubmission(QtWidgets.QWidget):
             str(houdini_version[0]) + "." + str(houdini_version[1])
         )
 
-        file_parameter = "picture"
-        render_filepath = self.node.parm(file_parameter).eval()
-
-        output_directory = os.path.dirname(render_filepath)
-        output_filename = os.path.basename(render_filepath)
-
         if self.network == "lop":
             render_rop_node = os.path.join(self.node.path(), "rop_usdrender")
             render_rop_node = render_rop_node.replace(os.sep, "/")
 
         else:
-            render_rop_node = os.path.join(self.node.path(), "ris1")
+            render_rop_node = os.path.join(self.node.path(), "denoise" if self.node.evalParm("denoise") else "render")
             render_rop_node = render_rop_node.replace(os.sep, "/")
 
         deadline_path = os.getenv("DEADLINE_PATH")
@@ -130,12 +166,18 @@ class FarmSubmission(QtWidgets.QWidget):
             "Frames=" + framerange,
             "Priority=" + priority,
             "ConcurrentTasks=" + concurrent_tasks,
+            "ChunkSize=" + str(frames_per_task),
             "Name=" + submission_name,
             "Department=3D",
-            "OutputDirectory0=" + output_directory,
-            "OutputFilename0=" + output_filename,
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
         ]
+
+        for i, p in enumerate(self.render_paths):
+            output_directory = os.path.dirname(p)
+            job_info.append("OutputDirectory{}={}".format(i, output_directory))
+            if not p.endswith('denoise'):
+                output_filename = os.path.basename(p).replace('$F4', '%04d')
+                job_info.append("OutputFilename{}={}".format(i, output_filename))
 
         # Building plugin info properties
         plugin_info = [

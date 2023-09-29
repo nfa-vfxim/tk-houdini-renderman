@@ -10,7 +10,8 @@ def render(on_farm=False):
     app = eng.apps["tk-houdini-renderman"]
     current_node = hou.pwd()
 
-    setupAOVs(False)
+    if not setupAOVs(False):
+        return
 
     if on_farm:
         app.submit_to_farm(current_node, "rop")
@@ -35,8 +36,11 @@ def setupAOVs(show_notif=True):
 
     hda = hou.pwd()
     rman = hda.node('render')
-    denoise = hda.node('denoise')
 
+    if not app.validate_node(hda, 'rop'):
+        return False
+
+    denoise = hda.node('denoise')
     use_denoise = hda.evalParm('denoise')
 
     beauty = hda.evalParm('aovBeauty')
@@ -269,6 +273,8 @@ def setupAOVs(show_notif=True):
     if show_notif:
         hou.ui.displayMessage(msg)
     print('[RenderMan Renderer] ' + msg)
+
+    return True
 
 
 def get_render_paths():
