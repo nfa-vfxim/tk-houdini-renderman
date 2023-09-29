@@ -82,7 +82,7 @@ class FarmSubmission(QtWidgets.QWidget):
         self.frame_range.setLayout(frame_range_group_layout)
         frames_group_layout.addWidget(self.frame_range)
 
-        self.fpt = QtWidgets.QWidget()
+        self.frames_per_task = QtWidgets.QWidget()
         fpt_group_layout = QtWidgets.QVBoxLayout()
         fpt_group_layout.setContentsMargins(4, 0, 0, 0)
         self.frames_per_task_label = QtWidgets.QLabel("Frames Per Task")
@@ -92,8 +92,8 @@ class FarmSubmission(QtWidgets.QWidget):
         self.frames_per_task_line.setValue(1)
         fpt_group_layout.addWidget(self.frames_per_task_label)
         fpt_group_layout.addWidget(self.frames_per_task_line)
-        self.fpt.setLayout(fpt_group_layout)
-        frames_group_layout.addWidget(self.fpt)
+        self.frames_per_task.setLayout(fpt_group_layout)
+        frames_group_layout.addWidget(self.frames_per_task)
 
         self.frames_group.setLayout(frames_group_layout)
         layout.addWidget(self.frames_group)
