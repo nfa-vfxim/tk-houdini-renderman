@@ -85,15 +85,6 @@ class TkRenderManNodeHandler(object):
         for p in render_paths:
             self.__create_directory(p)
 
-        # # Set filters
-        # if network == "lop":
-        #     filters = self.__check_lop_filters(node)
-        #     self.__set_lop_filter_filename(node, filters)
-        #
-        # if network == "rop":
-        #     filters = self.__check_rop_filters(node)
-        #     self.__set_rop_filter_filename(filters, render_node=node)
-
         # Execute rendering
         if network == "lop":
             node.node("rop_usdrender").parm("execute").pressButton()
@@ -169,100 +160,6 @@ class TkRenderManNodeHandler(object):
             else:
                 return True
 
-    def __calculate_path(self, node, network):
-        # Get all necessary data
-        current_filepath = hou.hipFile.path()
-        work_template = self.app.get_template("work_file_template")
-        render_template = self.app.get_template("output_render_template")
-
-        resolution_x_field = "resolutionx"
-        resolution_y_field = "resolutiony"
-
-        resolution_x = 0
-        resolution_y = 0
-
-        evaluate_parm = True
-
-        # Because RenderMan in the rop network uses different
-        # parameter names, we need to change some bits
-        if network == "rop":
-            camera = node.parm("camera").eval()
-
-            evaluate_parm = False
-            resolution_x = hou.node(camera).parm("resx").eval()
-            resolution_y = hou.node(camera).parm("resy").eval()
-
-            if node.parm("override_camerares").eval():
-                res_fraction = node.parm("res_fraction").eval()
-
-                if res_fraction == "specific":
-                    evaluate_parm = True
-                    resolution_x_field = "res_overridex"
-                    resolution_y_field = "res_overridey"
-
-                else:
-                    resolution_x = resolution_x * res_fraction
-                    resolution_y = resolution_y * res_fraction
-
-        # Set fields
-        fields = work_template.get_fields(current_filepath)
-        fields["SEQ"] = "FORMAT: $F"
-        fields["output"] = node.parm("name").eval()
-        if evaluate_parm is True:
-            fields["width"] = node.parm(resolution_x_field).eval()
-            fields["height"] = node.parm(resolution_y_field).eval()
-
-        else:
-            fields["width"] = resolution_x
-            fields["height"] = resolution_y
-
-        # Apply fields
-        render_path = render_template.apply_fields(fields).replace(os.sep, "/")
-        self.app.logger.debug("Calculated render path %s." % render_path)
-
-        return render_path
-
-    def __calculate_filter_path(self, node, filter, render_node=None):
-        # Get all necessary data
-        current_filepath = hou.hipFile.path()
-        work_template = self.app.get_template("work_file_template")
-        render_template = self.app.get_template("output_aov_template")
-
-        # Set fields
-        fields = work_template.get_fields(current_filepath)
-        fields["SEQ"] = "FORMAT: $F"
-        fields["aov_name"] = filter
-
-        if render_node:
-            fields["name"] = render_node.parm("name").eval()
-            camera = render_node.parm("camera").eval()
-            resolution_x = hou.node(camera).parm("resx").eval()
-            resolution_y = hou.node(camera).parm("resy").eval()
-            fields["width"] = resolution_x
-            fields["height"] = resolution_y
-
-        else:
-            fields["name"] = node.parm("name").eval()
-            fields["width"] = node.parm("resolutionx").eval()
-            fields["height"] = node.parm("resolutiony").eval()
-
-        # Apply fields
-        render_path = render_template.apply_fields(fields).replace(os.sep, "/")
-        self.app.logger.debug("Calculated render path %s." % render_path)
-
-        return render_path
-
-    def __apply_path(self, node, render_path, network):
-        # Set render path on specified node
-
-        if network == "lop":
-            parameter = "picture"
-        else:
-            parameter = "ri_display_0"
-
-        node.parm(parameter).set(render_path)
-        self.app.logger.debug("Set render path on %s" % str(node))
-
     def __create_directory(self, render_path):
         """Create directory to render to
 
@@ -333,42 +230,6 @@ class TkRenderManNodeHandler(object):
 
         # Return
         return filters
-
-    def __set_rop_filter_filename(self, filters, render_node):
-        # Iterate trough filters
-        for node in filters:
-            # Get node shader network
-            node = hou.node(node)
-
-            # Get node type
-            node_type = node.type().nameComponents()[2]
-
-            # Calculate render path
-            render_path = self.__calculate_filter_path(
-                node, node_type, render_node=render_node
-            )
-
-            # Set render path
-            node.parm("filename").set(render_path)
-
-    def __set_lop_filter_filename(self, node, filters):
-        # This function will process the filter specfied, and
-        # populate the path if it is possible to do
-        for item in filters:
-            # Look at our dictionary and get the keys/values supplied
-            group = item.get("group")
-            value = item.get("value")
-
-            # Build the paramater name
-            parameter_name = hou.encode("ri:" + group + ":" + value + ":filename")
-            parameter = node.parm(parameter_name)
-
-            # If there is no "filename" parameter, skip this one
-            if parameter is None:
-                continue
-            # Otherwise, just apply the correct file path and set it :)
-            render_path = self.__calculate_filter_path(node, value)
-            parameter.set(render_path)
 
     def get_filters_output(self, node):
         if node.type().nameComponents()[2] == "sgtk_ris":
