@@ -24,24 +24,28 @@ configuration:
     work_file_template:
         type: template
         fields: context, version, [name], *
-        description: >
-            A template which describes the current Houdini work hip file. Used to fetch version.
+        description: A template which describes the current Houdini work hip file. Used to fetch version.
 
     output_render_template:
         type: template
-        fields: context, version, SEQ, [name], [width], [height], *
-        description: >
-            A template which describes the output of the beauty render.
-
-    output_aov_template:
-        type: template
         fields: context, version, SEQ, [aov_name], [name], [width], [height], *
-        description: >
-            A template which describes the output of the beauty render.
+        description: A template which describes the output of the render.
+
+    render_metadata:
+        type: list
+        description: A list of Render Metadata (RMD) to add to the renders. The key will be prefixed with "rmd_"
+        allows_empty: True
+        values:
+            type: dict
+            items:
+                key: { type: str }
+                type: { type: str }
+                expression: { type: str }
+                group: { type: str, allows_empty: True }
 
 # general info about this app
 display_name: "RenderMan Render Node"
-description: "A ShotGrid Toolkit app to render in Houdini with the RenderMan render engine and Deadline."
+description: "A ShotGrid Toolkit app to render in Houdini with the RenderMan 25 render engine and Deadline."
 
 # engine constraints
 supported_engines: [tk-houdini]
