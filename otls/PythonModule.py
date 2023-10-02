@@ -108,11 +108,12 @@ def setupAOVs(show_notif=True):
     # Denoise
     denoise.parm("output").set(os.path.dirname(app.get_output_path(hda, "denoise")))
 
-    # Statistiscs
+    # Statistics
     rman.parm("ri_statistics_xmlfilename").set(
         app.get_output_path(hda, "stats")[:-3] + "xml"
     )
 
+    # TODO add custom aovs
     # 0: Beauty 16 bit DWAa
     # 1: Shading 16 bit DWAa
     # 2: Lighting 16 bit DWAa
@@ -315,7 +316,7 @@ def setupAOVs(show_notif=True):
             md_count_node + md_count_external + (len(md_config) > 0)
         )
 
-        rman.parm("ri_image_Artist_{}".format(f)).set(app.context.user["login"])
+        rman.parm("ri_image_Artist_{}".format(f)).set(str(app.context.user["id"]))
         for parm in md_parms:
             name = parm.name().split("_")
             index = -1
@@ -327,7 +328,7 @@ def setupAOVs(show_notif=True):
 
         if len(lightgroups):
             rman.parm("ri_exr_metadata_key_{}_{}".format(f, md_count_node - 1)).set(
-                "rmd_lightgroups"
+                "rmd_RenderLightGroups"
             )
             rman.parm("ri_exr_metadata_type_{}_{}".format(f, md_count_node - 1)).set(
                 "string"
@@ -352,7 +353,7 @@ def setupAOVs(show_notif=True):
 
         rman.parm(
             "ri_exr_metadata_key_{}_{}".format(f, md_count_node + md_count_external)
-        ).set("rmd_groups")
+        ).set("rmd_PostRenderGroups")
         rman.parm(
             "ri_exr_metadata_type_{}_{}".format(f, md_count_node + md_count_external)
         ).set("string")

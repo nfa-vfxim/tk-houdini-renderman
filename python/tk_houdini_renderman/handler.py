@@ -36,17 +36,19 @@ class TkRenderManNodeHandler(object):
         self.app = app
         self.sg = self.app.shotgun
 
-    def submit_to_farm(self, node, network):
+    def submit_to_farm(self, node: hou.Node, network: str):
         """Start farm render
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
-        # Create directories
         render_name = node.parm("name").eval()
+
+        # Create directories
         render_paths = node.type().hdaModule().get_render_paths()
-        for p in render_paths:
-            self.__create_directory(p)
+        for path in render_paths:
+            self.__create_directory(path)
 
         # Determine basic variables for submission
         file_name = hou.hipFile.name()
@@ -74,16 +76,17 @@ class TkRenderManNodeHandler(object):
         )
         submission.show()
 
-    def execute_render(self, node, network):
+    def execute_render(self, node: hou.Node, network: str):
         """Start local render
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         # Create directories
         render_paths = node.type().hdaModule().get_render_paths()
-        for p in render_paths:
-            self.__create_directory(p)
+        for path in render_paths:
+            self.__create_directory(path)
 
         # Execute rendering
         if network == "lop":
@@ -93,12 +96,13 @@ class TkRenderManNodeHandler(object):
                 "execute"
             ).pressButton()
 
-    def copy_to_clipboard(self, node, network=None):
+    def copy_to_clipboard(self, node: hou.Node, network: str = None):
         """Function to copy the path directly to the clipboard,
         currently only Windows is supported
 
-        :param node: RenderMan node to get clipboard from
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node to get path from
+            network (str): Network type
         """
 
         # Function to copy the path directly to the clipboard,
@@ -119,19 +123,25 @@ class TkRenderManNodeHandler(object):
             )
 
     @staticmethod
-    def validate_node(node, network):
+    def validate_node(node: hou.Node, network: str) -> bool:
         """This function will make sure all the parameters
         are filled in and setup correctly.
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         # First we'll check if there is a name
         render_name = node.parm("name").eval()
         if render_name == "":
             hou.ui.displayMessage(
-                "Name is not defined, please set the name "
-                "parameter before submitting.",
+                "Name is not defined, please set the name parameter before submitting.",
+                severity=hou.severityType.Error,
+            )
+            return False
+        elif not render_name.isalnum():
+            hou.ui.displayMessage(
+                "Name is not alphanumeric, please only use alphabet letters (a-z) and numbers (0-9).",
                 severity=hou.severityType.Error,
             )
             return False
@@ -160,10 +170,68 @@ class TkRenderManNodeHandler(object):
             else:
                 return True
 
-    def __create_directory(self, render_path):
+    def get_output_path(self, node: hou.Node, aov_name: str, network="rop") -> str:
+        """Calculate render path for an aov
+
+        Args:
+            node (hou.Node): RenderMan node
+            aov_name (str): AOV name
+            network (str): Network type
+        """
+        current_filepath = hou.hipFile.path()
+
+        work_template = self.get_template("work_file_template")
+        render_template = self.get_template("output_render_template")
+
+        resolution_x_field = "resolutionx"
+        resolution_y_field = "resolutiony"
+
+        resolution_x = 0
+        resolution_y = 0
+
+        evaluate_parm = True
+
+        # Because RenderMan in the rop network uses different
+        # parameter names, we need to change some bits
+        if network == "rop":
+            camera = node.parm("camera").eval()
+
+            evaluate_parm = False
+            resolution_x = hou.node(camera).parm("resx").eval()
+            resolution_y = hou.node(camera).parm("resy").eval()
+
+            if node.parm("override_camerares").eval():
+                res_fraction = node.parm("res_fraction").eval()
+
+                if res_fraction == "specific":
+                    evaluate_parm = True
+                    resolution_x_field = "res_overridex"
+                    resolution_y_field = "res_overridey"
+
+                else:
+                    resolution_x = resolution_x * res_fraction
+                    resolution_y = resolution_y * res_fraction
+
+        # Set fields
+        fields = work_template.get_fields(current_filepath)
+        fields["SEQ"] = "FORMAT: $F"
+        fields["output"] = node.parm("name").eval()
+        fields["aov_name"] = aov_name
+        if evaluate_parm is True:
+            fields["width"] = node.parm(resolution_x_field).eval()
+            fields["height"] = node.parm(resolution_y_field).eval()
+
+        else:
+            fields["width"] = resolution_x
+            fields["height"] = resolution_y
+
+        return render_template.apply_fields(fields).replace(os.sep, "/")
+
+    def __create_directory(self, render_path: str):
         """Create directory to render to
 
-        :param render_path: Render path to create directory for
+        Args:
+            render_path (str): Render path to create directory for
         """
         directory = os.path.dirname(render_path)
 
@@ -173,7 +241,7 @@ class TkRenderManNodeHandler(object):
             self.app.logger.debug("Created directory %s." % directory)
 
     @staticmethod
-    def __check_rop_filters(node):
+    def __check_rop_filters(node: hou.Node):
         # Create list to appends filters to
         filters = []
 
@@ -199,7 +267,7 @@ class TkRenderManNodeHandler(object):
         return filters
 
     @staticmethod
-    def __check_lop_filters(node):
+    def __check_lop_filters(node: hou.Node):
         # Amount of groups in the filter tab in the node
         tabs = range(0, 5)
 
@@ -231,7 +299,7 @@ class TkRenderManNodeHandler(object):
         # Return
         return filters
 
-    def get_filters_output(self, node):
+    def get_filters_output(self, node: hou.Node):
         if node.type().nameComponents()[2] == "sgtk_ris":
             filter_passes = self.__get_filters_rop_output(node)
 
@@ -240,7 +308,7 @@ class TkRenderManNodeHandler(object):
 
         return filter_passes
 
-    def __get_filters_rop_output(self, node):
+    def __get_filters_rop_output(self, node: hou.Node):
         filters = self.__check_rop_filters(node)
         filter_passes = []
         for node in filters:
@@ -263,7 +331,7 @@ class TkRenderManNodeHandler(object):
 
         return filters
 
-    def __get_filters_lop_output(self, node):
+    def __get_filters_lop_output(self, node: hou.Node):
         # This function will check every item in the filters group,
         # and return the file paths that are in there
         filters = self.__check_lop_filters(node)
@@ -291,13 +359,14 @@ class TkRenderManNodeHandler(object):
         # Return the list containing every filter
         return filter_passes
 
-    def get_published_status(self, node):
+    def get_published_status(self, node: hou.Node):
         """This function will check on ShotGrid if there is a publish
         with exactly the same name on the project. If
         there is a publish existing it will return a "True" value,
         otherwise a "False" value
 
-        :param node: RenderMan node
+        Args:
+            node (hou.Node): RenderMan node
         """
         sg = self.sg
 

@@ -20,10 +20,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import os
-
 import hou
 import sgtk
+from hou import Node
 
 
 class TkHoudiniRenderMan(sgtk.platform.Application):
@@ -34,139 +33,100 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
 
         types = ("string", "int", "float")
         failed = False
-        for md in self.get_metadata_config():
-            if md.get("key") == "groups":
-                self.logger.error('Reserved metadata key "groups" was used.')
+        for metadata in self.get_metadata_config():
+            if metadata.get("key").lower() == "renderlightgroups":
+                self.logger.error('Reserved metadata key "RenderLightGroups" was used.')
                 failed = True
-            if md.get("type") not in types:
-                self.logger.error(
-                    "Invalid metadata type for key {}: {}".format(
-                        md.get("key"), md.get("type")
-                    )
-                )
+            if metadata.get("key").lower() == "postrendergroups":
+                self.logger.error('Reserved metadata key "PostRenderGroups" was used.')
+                failed = True
+            if metadata.get("type") not in types:
+                msg = f"Invalid metadata type for key '{metadata.get('key')}': '{metadata.get('type')}'"
+                self.logger.error(msg)
                 failed = True
         if failed:
-            raise Exception(
+            raise ValueError(
                 "One or more errors occurred while validating the metadata config. Please check the config "
                 "and try again."
             )
 
-    def execute_render(self, node, network):
+    def execute_render(self, node: hou.Node, network: str):
         """Start farm render
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         self.handler.execute_render(node, network)
 
-    def submit_to_farm(self, node, network):
+    def submit_to_farm(self, node: hou.Node, network: str):
         """Start local render
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         self.handler.submit_to_farm(node, network)
 
     def copy_to_clipboard(self, node, network=None):
         """Copy render path to clipboard
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         self.handler.copy_to_clipboard(node, network)
 
     @staticmethod
-    def get_all_renderman_nodes():
+    def get_all_renderman_nodes() -> tuple[Node]:
         """Get all nodes from node type sgtk_hdprman"""
         lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
         rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
         nodes = lop_nodes + rop_nodes
         return nodes
 
-    def get_output_path(self, node, aov_name, network="rop"):
+    def get_output_path(
+        self, node: hou.Node, aov_name: str, network: str = "rop"
+    ) -> str:
         """Calculate render path for an aov
 
-        :param node: RenderMan node
-        :param aov_name: AOV name
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            aov_name (str): AOV name
+            network (str): Network type
         """
-        current_filepath = hou.hipFile.path()
-
-        work_template = self.get_template("work_file_template")
-        render_template = self.get_template("output_render_template")
-
-        resolution_x_field = "resolutionx"
-        resolution_y_field = "resolutiony"
-
-        resolution_x = 0
-        resolution_y = 0
-
-        evaluate_parm = True
-
-        # Because RenderMan in the rop network uses different
-        # parameter names, we need to change some bits
-        if network == "rop":
-            camera = node.parm("camera").eval()
-
-            evaluate_parm = False
-            resolution_x = hou.node(camera).parm("resx").eval()
-            resolution_y = hou.node(camera).parm("resy").eval()
-
-            if node.parm("override_camerares").eval():
-                res_fraction = node.parm("res_fraction").eval()
-
-                if res_fraction == "specific":
-                    evaluate_parm = True
-                    resolution_x_field = "res_overridex"
-                    resolution_y_field = "res_overridey"
-
-                else:
-                    resolution_x = resolution_x * res_fraction
-                    resolution_y = resolution_y * res_fraction
-
-        # Set fields
-        fields = work_template.get_fields(current_filepath)
-        fields["SEQ"] = "FORMAT: $F"
-        fields["output"] = node.parm("name").eval()
-        fields["aov_name"] = aov_name
-        if evaluate_parm is True:
-            fields["width"] = node.parm(resolution_x_field).eval()
-            fields["height"] = node.parm(resolution_y_field).eval()
-
-        else:
-            fields["width"] = resolution_x
-            fields["height"] = resolution_y
-
-        return render_template.apply_fields(fields).replace(os.sep, "/")
+        return self.handler.get_output_path(node, aov_name, network)
 
     def get_metadata_config(self):
         """Get Metadata config from ShotGrid"""
         return self.get_setting("render_metadata")
 
-    def validate_node(self, node, network):
+    def validate_node(self, node: hou.Node, network: str) -> str:
         """This function will make sure all the parameters
         are filled in and setup correctly.
 
-        :param node: RenderMan node
-        :param network: Network type
+        Args:
+            node (hou.Node): RenderMan node
+            network (str): Network type
         """
         return self.handler.validate_node(node, network)
 
-    def get_work_template(self):
+    def get_work_template(self) -> str:
         """Get work file template from ShotGrid"""
         work_template = self.get_template("work_file_template")
         return work_template
 
-    def get_publish_template(self):
+    def get_publish_template(self) -> str:
         """Get render file template from ShotGrid"""
         publish_template = self.get_template("output_render_template")
         return publish_template
 
     @staticmethod
-    def get_render_name(node):
+    def get_render_name(node) -> str:
         """Get render name from node
 
-        :param: RenderMan node
+        Args:
+            node (hou.Node): RenderMan node
         """
         name = node.parm("name").eval()
         return name

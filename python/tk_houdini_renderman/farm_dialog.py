@@ -173,11 +173,11 @@ class FarmSubmission(QtWidgets.QWidget):
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
         ]
 
-        for i, p in enumerate(self.render_paths):
-            output_directory = os.path.dirname(p)
+        for i, path in enumerate(self.render_paths):
+            output_directory = os.path.dirname(path)
             job_info.append("OutputDirectory{}={}".format(i, output_directory))
-            if not p.endswith("denoise"):
-                output_filename = os.path.basename(p).replace("$F4", "%04d")
+            if not path.endswith("denoise"):
+                output_filename = os.path.basename(path).replace("$F4", "%04d")
                 job_info.append("OutputFilename{}={}".format(i, output_filename))
 
         # Building plugin info properties
