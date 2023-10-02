@@ -180,8 +180,8 @@ class TkRenderManNodeHandler(object):
         """
         current_filepath = hou.hipFile.path()
 
-        work_template = self.get_template("work_file_template")
-        render_template = self.get_template("output_render_template")
+        work_template = self.app.get_template("work_file_template")
+        render_template = self.app.get_template("output_render_template")
 
         resolution_x_field = "resolutionx"
         resolution_y_field = "resolutiony"
