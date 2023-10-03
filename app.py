@@ -143,3 +143,14 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         name = node.parm("name").eval()
         return name
+
+    def get_published_status(self, node: hou.Node) -> bool:
+        """This function will check on ShotGrid if there is a publish
+        with exactly the same name on the project. If
+        there is a publish existing it will return a "True" value,
+        otherwise a "False" value
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.get_published_status(node)

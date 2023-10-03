@@ -1,4 +1,5 @@
 # MIT License
+import json
 
 # Copyright (c) 2021 Netherlands Film Academy
 
@@ -778,7 +779,7 @@ class TkRenderManNodeHandler(object):
         # Return the list containing every filter
         return filter_passes
 
-    def get_published_status(self, node: hou.Node):
+    def get_published_status(self, node: hou.Node) -> bool:
         """This function will check on ShotGrid if there is a publish
         with exactly the same name on the project. If
         there is a publish existing it will return a "True" value,
@@ -800,7 +801,7 @@ class TkRenderManNodeHandler(object):
         else:
             parameter = "picture"
 
-        file_path = node.parm(parameter).rawValue()
+        file_path = node.node("render").parm(parameter).rawValue()
 
         # Detect "$F4" in the file path, and return it
         frame_match = re.search(regex, file_path)
