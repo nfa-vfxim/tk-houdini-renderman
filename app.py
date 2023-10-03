@@ -33,7 +33,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
 
         types = ("string", "int", "float")
         failed = False
-        for metadata in self.get_metadata_config():
+        for metadata in self.get_setting("render_metadata"):
             if metadata.get("key").lower() == "renderlightgroups":
                 self.logger.error('Reserved metadata key "RenderLightGroups" was used.')
                 failed = True
@@ -96,10 +96,6 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
             network (str): Network type
         """
         return self.handler.get_output_path(node, aov_name, network)
-
-    def get_metadata_config(self):
-        """Get Metadata config from ShotGrid"""
-        return self.get_setting("render_metadata")
 
     def validate_node(self, node: hou.Node, network: str) -> str:
         """This function will make sure all the parameters
