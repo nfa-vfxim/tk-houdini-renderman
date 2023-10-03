@@ -111,6 +111,23 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         return self.handler.validate_node(node, network)
 
+    def setup_aovs(self, node: hou.Node, show_notif: bool = True) -> bool:
+        """Setup outputs on the RenderMan node with correct aovs
+
+        Args:
+            node (hou.Node): RenderMan node
+            show_notif (bool): Show notification when successfully set up AOVs
+        """
+        return self.handler.setup_aovs(node, show_notif)
+
+    def get_output_paths(self, node: hou.Node) -> list[str]:
+        """Get output paths for the RenderMan node
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.get_output_paths(node)
+
     def get_work_template(self) -> str:
         """Get work file template from ShotGrid"""
         work_template = self.get_template("work_file_template")
