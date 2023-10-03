@@ -126,13 +126,11 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
 
     def get_work_template(self) -> str:
         """Get work file template from ShotGrid"""
-        work_template = self.get_template("work_file_template")
-        return work_template
+        return self.get_template("work_file_template")
 
-    def get_publish_template(self) -> str:
+    def get_render_template(self) -> str:
         """Get render file template from ShotGrid"""
-        publish_template = self.get_template("output_render_template")
-        return publish_template
+        return self.get_template("output_render_template")
 
     @staticmethod
     def get_render_name(node) -> str:
