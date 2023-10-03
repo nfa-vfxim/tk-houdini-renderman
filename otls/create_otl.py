@@ -271,7 +271,7 @@ hda_parms.append(
         "executeFarm",
         "Submit to Farm",
         join_with_next=True,
-        script_callback="hou.phm().render(True)",
+        script_callback="hou.phm().render(kwargs['node'], True)",
         script_callback_language=hou.scriptLanguage.Python,
     )
 )
@@ -280,7 +280,7 @@ hda_parms.append(
         "executeLocal",
         "Render to Disk",
         join_with_next=True,
-        script_callback="hou.phm().render(False)",
+        script_callback="hou.phm().render(kwargs['node'], False)",
         script_callback_language=hou.scriptLanguage.Python,
     )
 )
@@ -289,7 +289,7 @@ hda_parms.append(
         "copyPathToClipboard",
         "Copy path to clipboard",
         join_with_next=True,
-        script_callback="hou.phm().copy_to_clipboard()",
+        script_callback="hou.phm().copy_to_clipboard(kwargs['node'])",
         script_callback_language=hou.scriptLanguage.Python,
     )
 )
@@ -297,7 +297,7 @@ hda_parms.append(
     hou.ButtonParmTemplate(
         "openStats",
         "Open render statistics",
-        script_callback="hou.phm().open_stats()",
+        script_callback="hou.phm().open_stats(kwargs['node'])",
         script_callback_language=hou.scriptLanguage.Python,
     )
 )
@@ -417,7 +417,7 @@ aovs_folder.addParmTemplate(
     hou.ButtonParmTemplate(
         "setupAOVs",
         "Setup AOV's",
-        script_callback="hou.phm().setupAOVs()",
+        script_callback="hou.phm().setup_aovs(kwargs['node'])",
         script_callback_language=hou.scriptLanguage.Python,
     )
 )

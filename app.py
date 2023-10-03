@@ -33,7 +33,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
 
         types = ("string", "int", "float")
         failed = False
-        for metadata in self.get_metadata_config():
+        for metadata in self.get_setting("render_metadata"):
             if metadata.get("key").lower() == "renderlightgroups":
                 self.logger.error('Reserved metadata key "RenderLightGroups" was used.')
                 failed = True
@@ -97,10 +97,6 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         return self.handler.get_output_path(node, aov_name, network)
 
-    def get_metadata_config(self):
-        """Get Metadata config from ShotGrid"""
-        return self.get_setting("render_metadata")
-
     def validate_node(self, node: hou.Node, network: str) -> str:
         """This function will make sure all the parameters
         are filled in and setup correctly.
@@ -111,15 +107,30 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         return self.handler.validate_node(node, network)
 
+    def setup_aovs(self, node: hou.Node, show_notif: bool = True) -> bool:
+        """Setup outputs on the RenderMan node with correct aovs
+
+        Args:
+            node (hou.Node): RenderMan node
+            show_notif (bool): Show notification when successfully set up AOVs
+        """
+        return self.handler.setup_aovs(node, show_notif)
+
+    def get_output_paths(self, node: hou.Node) -> list[str]:
+        """Get output paths for the RenderMan node
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.get_output_paths(node)
+
     def get_work_template(self) -> str:
         """Get work file template from ShotGrid"""
-        work_template = self.get_template("work_file_template")
-        return work_template
+        return self.get_template("work_file_template")
 
-    def get_publish_template(self) -> str:
+    def get_render_template(self) -> str:
         """Get render file template from ShotGrid"""
-        publish_template = self.get_template("output_render_template")
-        return publish_template
+        return self.get_template("output_render_template")
 
     @staticmethod
     def get_render_name(node) -> str:
@@ -130,3 +141,14 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         name = node.parm("name").eval()
         return name
+
+    def get_published_status(self, node: hou.Node) -> bool:
+        """This function will check on ShotGrid if there is a publish
+        with exactly the same name on the project. If
+        there is a publish existing it will return a "True" value,
+        otherwise a "False" value
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.get_published_status(node)
