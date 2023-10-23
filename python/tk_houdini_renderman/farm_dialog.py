@@ -133,6 +133,13 @@ class FarmSubmission(QtWidgets.QWidget):
         framerange = self.framerange.text()
         frames_per_task = int(self.frames_per_task_line.text())
 
+        if frames_per_task < 1:
+            hou.ui.displayMessage(
+                "Submission canceled because frames per task is set below 1.",
+                severity=hou.severityType.ImportantMessage,
+            )
+            return
+
         if self.smartframes.isChecked():
             framerange = get_smart_frame_list(framerange, frames_per_task)
 
