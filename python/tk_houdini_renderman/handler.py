@@ -635,7 +635,7 @@ class TkRenderManNodeHandler(object):
 
         # Denoise
         if node.evalParm("denoise"):
-            paths.append(os.path.dirname(self.get_output_path(node, "denoise")))
+            paths.append(self.get_output_path(node, "denoise"))
 
         # Statistiscs
         paths.append(self.get_output_path(node, "stats")[:-3] + "xml")
