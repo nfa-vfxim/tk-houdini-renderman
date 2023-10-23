@@ -124,6 +124,14 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         return self.handler.get_output_paths(node)
 
+    def get_output_range(self, node: hou.Node) -> list[int]:
+        """Get output frame range for the RenderMan node
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.get_output_range(node)
+
     def get_work_template(self) -> str:
         """Get work file template from ShotGrid"""
         return self.get_template("work_file_template")
