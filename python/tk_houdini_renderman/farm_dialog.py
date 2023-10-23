@@ -171,6 +171,8 @@ class FarmSubmission(QtWidgets.QWidget):
             "Name=" + submission_name,
             "Department=3D",
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
+            "PostTaskScript="
+            + os.path.join(os.path.dirname(__file__), "post_task_script.py"),
         ]
 
         for i, path in enumerate(self.render_paths):
