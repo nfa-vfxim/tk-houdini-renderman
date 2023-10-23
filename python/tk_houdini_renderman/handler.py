@@ -538,6 +538,8 @@ class TkRenderManNodeHandler(object):
             aov_name (str): AOV name
             network (str): Network type
         """
+        aov_name = aov_name[0].lower() + aov_name[1:]
+
         current_filepath = hou.hipFile.path()
 
         work_template = self.app.get_template("work_file_template")
