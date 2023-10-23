@@ -43,6 +43,10 @@ configuration:
                 expression: { type: str }
                 group: { type: str, allows_empty: True }
 
+    post_task_script:
+        type: str
+        description: The external path to the post task script
+
 # general info about this app
 display_name: "RenderMan Render Node"
 description: "A ShotGrid Toolkit app to render in Houdini with the RenderMan 25 render engine and Deadline."

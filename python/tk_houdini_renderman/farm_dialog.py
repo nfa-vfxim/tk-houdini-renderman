@@ -168,6 +168,8 @@ class FarmSubmission(QtWidgets.QWidget):
 
         deadline_path = os.getenv("DEADLINE_PATH")
 
+        post_task_script = self.app.get_setting("post_task_script")
+
         # Building job info properties
         job_info = [
             "Plugin=Houdini",
@@ -178,9 +180,10 @@ class FarmSubmission(QtWidgets.QWidget):
             "Name=" + submission_name,
             "Department=3D",
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
-            "PostTaskScript="
-            + os.path.join(os.path.dirname(__file__), "post_task_script.py"),
         ]
+
+        if post_task_script:
+            job_info.append("PostTaskScript=" + post_task_script)
 
         for i, path in enumerate(self.render_paths):
             output_directory = os.path.dirname(path)
