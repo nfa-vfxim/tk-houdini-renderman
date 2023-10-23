@@ -133,6 +133,13 @@ class FarmSubmission(QtWidgets.QWidget):
         framerange = self.framerange.text()
         frames_per_task = int(self.frames_per_task_line.text())
 
+        if frames_per_task < 1:
+            hou.ui.displayMessage(
+                "Submission canceled because frames per task is set below 1.",
+                severity=hou.severityType.ImportantMessage,
+            )
+            return
+
         if self.smartframes.isChecked():
             framerange = get_smart_frame_list(framerange, frames_per_task)
 
@@ -161,6 +168,8 @@ class FarmSubmission(QtWidgets.QWidget):
 
         deadline_path = os.getenv("DEADLINE_PATH")
 
+        post_task_script = self.app.get_setting("post_task_script")
+
         # Building job info properties
         job_info = [
             "Plugin=Houdini",
@@ -172,6 +181,9 @@ class FarmSubmission(QtWidgets.QWidget):
             "Department=3D",
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
         ]
+
+        if post_task_script:
+            job_info.append("PostTaskScript=" + post_task_script)
 
         for i, path in enumerate(self.render_paths):
             output_directory = os.path.dirname(path)

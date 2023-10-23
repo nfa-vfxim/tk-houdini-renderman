@@ -56,15 +56,8 @@ class TkRenderManNodeHandler(object):
         file_name = os.path.basename(file_name).split(".")[0] + " (%s)" % render_name
 
         # Determine framerange
-        framerange_type = node.parm("trange").eval()
-        if framerange_type > 0:
-            start_frame = int(node.parm("f1").eval())
-            end_frame = int(node.parm("f2").eval())
-            framerange = str(start_frame) + "-" + str(end_frame)
-        else:
-            current_frame = int(hou.frame())
-            framerange = str(current_frame) + "-" + str(current_frame)
-        # TODO add increment parameter
+        framerange = self.get_output_range(node)
+        framerange = f"{framerange[0]}-{framerange[1]}"
 
         # Open node so it will work on the farm
         # even if the node is not installed
@@ -545,6 +538,8 @@ class TkRenderManNodeHandler(object):
             aov_name (str): AOV name
             network (str): Network type
         """
+        aov_name = aov_name[0].lower() + aov_name[1:]
+
         current_filepath = hou.hipFile.path()
 
         work_template = self.app.get_template("work_file_template")
@@ -625,7 +620,7 @@ class TkRenderManNodeHandler(object):
         if node.evalParm("aovBeauty"):
             paths.append(self.get_output_path(node, "beauty"))
         if len(shading):
-            paths.append(self.get_output_path(node, "beauty"))
+            paths.append(self.get_output_path(node, "shading"))
         if len(lighting) or len(lightgroups):
             paths.append(self.get_output_path(node, "lighting"))
         if len(utility) or node.evalParm("tees"):
@@ -640,12 +635,25 @@ class TkRenderManNodeHandler(object):
 
         # Denoise
         if node.evalParm("denoise"):
-            paths.append(os.path.dirname(self.get_output_path(node, "denoise")))
+            paths.append(self.get_output_path(node, "denoise"))
 
         # Statistiscs
         paths.append(self.get_output_path(node, "stats")[:-3] + "xml")
 
         return paths
+
+    def get_output_range(self, node: hou.Node) -> list[int]:
+        framerange_type = node.parm("trange").eval()
+        if framerange_type > 0:
+            start_frame = int(node.parm("f1").eval())
+            end_frame = int(node.parm("f2").eval())
+            framerange = [start_frame, end_frame]
+        else:
+            current_frame = int(hou.frame())
+            framerange = [current_frame, current_frame]
+        # TODO add increment parameter
+
+        return framerange
 
     def __create_directory(self, render_path: str):
         """Create directory to render to
