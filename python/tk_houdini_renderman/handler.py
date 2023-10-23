@@ -620,7 +620,7 @@ class TkRenderManNodeHandler(object):
         if node.evalParm("aovBeauty"):
             paths.append(self.get_output_path(node, "beauty"))
         if len(shading):
-            paths.append(self.get_output_path(node, "beauty"))
+            paths.append(self.get_output_path(node, "shading"))
         if len(lighting) or len(lightgroups):
             paths.append(self.get_output_path(node, "lighting"))
         if len(utility) or node.evalParm("tees"):
