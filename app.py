@@ -50,23 +50,21 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
                 "and try again."
             )
 
-    def execute_render(self, node: hou.Node, network: str):
+    def execute_render(self, node: hou.Node):
         """Start farm render
 
         Args:
             node (hou.Node): RenderMan node
-            network (str): Network type
         """
-        self.handler.execute_render(node, network)
+        self.handler.execute_render(node)
 
-    def submit_to_farm(self, node: hou.Node, network: str):
+    def submit_to_farm(self, node: hou.Node):
         """Start local render
 
         Args:
             node (hou.Node): RenderMan node
-            network (str): Network type
         """
-        self.handler.submit_to_farm(node, network)
+        self.handler.submit_to_farm(node)
 
     def copy_to_clipboard(self, node, network=None):
         """Copy render path to clipboard
@@ -80,10 +78,7 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
     @staticmethod
     def get_all_renderman_nodes() -> tuple[Node]:
         """Get all nodes from node type sgtk_hdprman"""
-        lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_hdprman").instances()
-        rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
-        nodes = lop_nodes + rop_nodes
-        return nodes
+        return hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
 
     def get_output_path(
         self, node: hou.Node, aov_name: str, network: str = "rop"
@@ -107,14 +102,22 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         return self.handler.validate_node(node, network)
 
-    def setup_aovs(self, node: hou.Node, show_notif: bool = True) -> bool:
+    def setup_light_groups(self, node: hou.Node) -> bool:
+        """Setup light groups on the light nodes
+
+        Args:
+            node (hou.Node): RenderMan node
+        """
+        return self.handler.setup_light_groups(node)
+
+    def setup_aovs(self, node: hou.Node, show_notification: bool = True) -> bool:
         """Setup outputs on the RenderMan node with correct aovs
 
         Args:
             node (hou.Node): RenderMan node
-            show_notif (bool): Show notification when successfully set up AOVs
+            show_notification (bool): Show notification when successfully set up AOVs
         """
-        return self.handler.setup_aovs(node, show_notif)
+        return self.handler.setup_aovs(node, show_notification)
 
     def get_output_paths(self, node: hou.Node) -> list[str]:
         """Get output paths for the RenderMan node

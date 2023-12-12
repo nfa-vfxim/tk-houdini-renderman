@@ -156,7 +156,7 @@ class FarmSubmission(QtWidgets.QWidget):
         houdini_version = str(houdini_version[0]) + "." + str(houdini_version[1])
 
         if self.network == "lop":
-            render_rop_node = os.path.join(self.node.path(), "rop_usdrender")
+            render_rop_node = os.path.join(self.node.path(), "render")
             render_rop_node = render_rop_node.replace(os.sep, "/")
 
         else:
@@ -182,7 +182,8 @@ class FarmSubmission(QtWidgets.QWidget):
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
         ]
 
-        if post_task_script:
+        # TODO create post task script for lop denoise renders
+        if self.network == "rop" and post_task_script:
             job_info.append("PostTaskScript=" + post_task_script)
 
         for i, path in enumerate(self.render_paths):

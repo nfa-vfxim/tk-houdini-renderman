@@ -1,1 +1,1 @@
-from . import tk_houdini_renderman
+from . import tk_houdini_renderman, datamodel
