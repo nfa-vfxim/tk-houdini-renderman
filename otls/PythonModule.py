@@ -14,9 +14,9 @@ def render(node: hou.Node, on_farm: bool = False):
         return
 
     if on_farm:
-        app.submit_to_farm(node, "rop")
+        app.submit_to_farm(node)
     else:
-        app.execute_render(node, "rop")
+        app.execute_render(node)
 
 
 def copy_to_clipboard(node: hou.Node):
@@ -24,17 +24,25 @@ def copy_to_clipboard(node: hou.Node):
 
     eng = sgtk.platform.current_engine()
     app = eng.apps["tk-houdini-renderman"]
-    app.copy_to_clipboard(node.node("render"), "rop")
+    app.copy_to_clipboard(node.node("render"))
 
     hou.ui.displayMessage("Copied path to clipboard.")
 
 
-def setup_aovs(node: hou.Node, show_notif: bool = True) -> bool:
+def setup_light_groups(node: hou.Node) -> bool:
     import sgtk
 
     eng = sgtk.platform.current_engine()
     app = eng.apps["tk-houdini-renderman"]
-    return app.setup_aovs(node, show_notif)
+    return app.setup_light_groups(node)
+
+
+def setup_aovs(node: hou.Node, show_notification: bool = True) -> bool:
+    import sgtk
+
+    eng = sgtk.platform.current_engine()
+    app = eng.apps["tk-houdini-renderman"]
+    return app.setup_aovs(node, show_notification)
 
 
 def get_output_paths(node: hou.Node):

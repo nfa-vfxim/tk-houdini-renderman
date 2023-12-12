@@ -40,8 +40,9 @@ configuration:
             items:
                 key: { type: str }
                 type: { type: str }
+                # value: { type: str }
                 expression: { type: str }
-                group: { type: str, allows_empty: True }
+                group: { type: str }
 
     post_task_script:
         type: str

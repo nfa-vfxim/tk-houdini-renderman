@@ -23,11 +23,11 @@ def __main__(*args):
         end_frame = task.GetEndFrame()
 
         for frame_num in range(start_frame, end_frame + 1):
-            output_filename = output_filename.replace("%04d", f"{frame_num:04}")
+            filename = output_filename.replace("%04d", f"{frame_num:04}")
             from_path = os.path.join(
-                output_directory, output_filename.replace("_denoise_", "_beauty_")
+                output_directory, filename.replace("_denoise_", "_beauty_")
             )
-            to_path = os.path.join(output_directory, output_filename)
+            to_path = os.path.join(output_directory, filename)
 
             if os.path.exists(from_path):
                 if not os.path.exists(to_path):

@@ -1,5 +1,4 @@
 # MIT License
-import json
 
 # Copyright (c) 2021 Netherlands Film Academy
 
@@ -21,14 +20,20 @@ import json
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import json
 import os
 import platform
 import re
 
 import hou
 import sgtk
+from PySide2.QtWidgets import QMessageBox
 
 from .farm_dialog import FarmSubmission
+from ..datamodel import aov_file
+from ..datamodel.lpe import LPEControl
+from ..datamodel.metadata import MetaData
+from ..datamodel.render_engine import RenderEngine
 
 
 class TkRenderManNodeHandler(object):
@@ -37,13 +42,26 @@ class TkRenderManNodeHandler(object):
         self.app = app
         self.sg = self.app.shotgun
 
-    def submit_to_farm(self, node: hou.Node, network: str):
+    @staticmethod
+    def _error(comment: str, error: Exception):
+        QMessageBox.critical(
+            hou.qt.mainWindow(),
+            "Error",
+            f"{comment}:\n{error}",
+        )
+
+    def submit_to_farm(self, node: hou.Node):
         """Start farm render
 
         Args:
             node (hou.Node): RenderMan node
-            network (str): Network type
         """
+        if not self.setup_light_groups(node, RenderEngine.RENDERMAN, False):
+            return
+        if not self.setup_aovs(node, False):
+            return
+
+        is_lop = isinstance(node, hou.LopNode)
         render_name = node.parm("name").eval()
 
         # Create directories
@@ -66,25 +84,37 @@ class TkRenderManNodeHandler(object):
         global submission
         # Start submission panel
         submission = FarmSubmission(
-            self.app, node, file_name, 50, framerange, render_paths, network=network
+            self.app,
+            node,
+            file_name,
+            50,
+            framerange,
+            render_paths,
+            network="lop" if is_lop else "rop",
         )
         submission.show()
 
-    def execute_render(self, node: hou.Node, network: str):
+    def execute_render(self, node: hou.Node):
         """Start local render
 
         Args:
             node (hou.Node): RenderMan node
-            network (str): Network type
         """
+        if not self.setup_light_groups(node, RenderEngine.RENDERMAN, False):
+            return
+        if not self.setup_aovs(node, False):
+            return
+
+        is_lop = isinstance(node, hou.LopNode)
+
         # Create directories
         render_paths = self.get_output_paths(node)
         for path in render_paths:
             self.__create_directory(path)
 
         # Execute rendering
-        if network == "lop":
-            node.node("rop_usdrender").parm("execute").pressButton()
+        if is_lop:
+            node.node("render").parm("execute").pressButton()
         else:
             node.node("denoise" if node.evalParm("denoise") else "render").parm(
                 "execute"
@@ -116,10 +146,156 @@ class TkRenderManNodeHandler(object):
                 "Currently copying to clipboard is only supported on Windows."
             )
 
+    def setup_light_groups(
+        self,
+        node: hou.Node,
+        render_engine: RenderEngine = RenderEngine.RENDERMAN,
+        show_notification: bool = True,
+    ) -> bool:
+        """This function clears all automated LPE tags from lights,
+        then it sets their tags according to user input,
+        after which it will set the proper render variables."""
+        is_lop = isinstance(node, hou.LopNode)
+
+        self.app.logger.debug("Setting up light groups")
+
+        lpe_tags = [
+            LPEControl(
+                RenderEngine.KARMA,
+                lop_control="xn__karmalightlpetag_control_4fbf",
+                lop_light_group="xn__karmalightlpetag_31af",
+                sop_light_group="vm_lpetag",
+            ),
+            LPEControl(
+                RenderEngine.RENDERMAN,
+                lop_control="xn__inputsrilightlightGroup_control_krbcf",
+                lop_light_group="xn__inputsrilightlightGroup_jebcf",
+                sop_light_group="lightGroup",
+            ),
+        ]
+
+        lpe_tag = next(
+            lpe_tag for lpe_tag in lpe_tags if lpe_tag.renderer == render_engine
+        )
+
+        # First we clear all our LPE tags, so we can add them again later
+        stage = hou.node("/stage")
+
+        all_nodes = stage.allSubChildren()
+
+        for light_node in all_nodes:
+            if light_node.type().name().startswith("light"):
+                lpe_parm = light_node.parm(lpe_tag.get_light_group(is_lop))
+                if lpe_parm:
+                    expressions_to_keep = ""
+                    for expression in lpe_parm.eval().split():
+                        # We only remove our own LPE tags so the custom ones remain.
+                        if not expression.startswith("LG_"):
+                            expressions_to_keep += expression
+
+                    lpe_parm.set(expressions_to_keep)
+
+        # Now we add our LPE tags to the lights
+        light_group_count = node.parm("light_groups_select").eval()
+        light_groups_info = {}
+
+        for i in range(1, light_group_count + 1):
+            # Collecting light group information from the node
+            light_group_name_parm = f"light_group_name_{i}"
+            selected_light_lops_parm = f"select_light_ops_{i}"
+
+            light_group_name = node.parm(light_group_name_parm).eval()
+            selected_light_lops = node.parm(selected_light_lops_parm).eval()
+
+            light_groups_info[light_group_name] = selected_light_lops.split()
+
+        lights_list = []
+        for light_group in light_groups_info:
+            if not re.match(r"^[A-Za-z0-9_]+$", light_group):
+                hou.ui.displayMessage(
+                    f"Error: Invalid light group name: '{light_group}'. You can only use letters, numbers and "
+                    f"underscores.",
+                    severity=hou.severityType.Error,
+                )
+                return False
+
+            # Using the collected information to set LPE tags
+            for light in light_groups_info[light_group]:
+                try:
+                    if light not in lights_list:
+                        lights_list.append(light)
+                        light_node = hou.node(light)
+
+                        if is_lop:
+                            lpe_control_parm = light_node.parm(lpe_tag.get_control())
+                            lpe_control_parm.set("set")
+                            lpe_control_parm.pressButton()
+
+                        lpe_param = light_node.parm(lpe_tag.get_light_group(is_lop))
+                        lpe_param.set(f"LG_{light_group}")
+                        lpe_param.pressButton()
+
+                    else:
+                        hou.ui.displayMessage(
+                            f"Error: Node {light} is in several light groups. A light can only be in one group.",
+                            severity=hou.severityType.Error,
+                        )
+                        return False
+                except AttributeError as e:
+                    hou.ui.displayMessage(
+                        f"Error: Can't set LPE tags for node {light} in light group list {light_group}. \n{e}",
+                        severity=hou.severityType.Error,
+                    )
+                    return False
+
+        if render_engine == RenderEngine.KARMA:
+            # Now we add the render vars to the Karma render settings node
+            karma_render_settings = node.node("karmarendersettings")
+            extra_render_variables = karma_render_settings.parm("extrarendervars")
+
+            indices_to_remove = []
+            # Collect our automated render variables, so we can remove only those
+            for i in range(1, extra_render_variables.eval() + 1):
+                if karma_render_settings.parm(
+                    f"name{i}"
+                ) and karma_render_settings.parm(f"name{i}").eval().startswith("LG_"):
+                    indices_to_remove.append(i)
+
+            # Remove instances from the last to the first to avoid re-indexing issues
+            for i in reversed(indices_to_remove):
+                # Instance indices are 1-based, but removal is 0-based
+                karma_render_settings.parm("extrarendervars").removeMultiParmInstance(
+                    i - 1
+                )
+
+            # Add our automated light groups back in
+            for light_group in light_groups_info:
+                render_variable_index = extra_render_variables.eval() + 1
+                extra_render_variables.set(render_variable_index)
+                karma_render_settings.parm(f"name{render_variable_index}").set(
+                    f"LG_{light_group}"
+                )
+                karma_render_settings.parm(f"format{render_variable_index}").set(
+                    "color3f"
+                )
+                karma_render_settings.parm(f"sourceName{render_variable_index}").set(
+                    f"C.*<L.'LG_{light_group}'>"
+                )
+                karma_render_settings.parm(f"sourceType{render_variable_index}").set(
+                    "lpe"
+                )
+
+        if show_notification:
+            hou.ui.displayMessage(
+                f"Finished light group setup for {light_group_count} groups",
+            )
+
+        return True
+
     @staticmethod
     def validate_node(node: hou.Node, network: str) -> bool:
-        """This function will make sure all the parameters
-        are filled in and setup correctly.
+        """
+        This function will make sure all the parameters are filled in and setup correctly.
 
         Args:
             node (hou.Node): RenderMan node
@@ -133,390 +309,418 @@ class TkRenderManNodeHandler(object):
                 severity=hou.severityType.Error,
             )
             return False
-        elif not render_name.isalnum():
+        if not render_name.isalnum():
             hou.ui.displayMessage(
                 "Name is not alphanumeric, please only use alphabet letters (a-z) and numbers (0-9).",
                 severity=hou.severityType.Error,
             )
             return False
 
+        # Make sure the node has an input to render
+        if network == "lop":
+            inputs = node.inputs()
+            if len(inputs) <= 0:
+                hou.ui.displayMessage(
+                    "Node doesn't have input, please connect this "
+                    "ShotGrid RenderMan render node to "
+                    "the stage to render.",
+                    severity=hou.severityType.Error,
+                )
+                return False
+
         # Check if camera exists
-        elif not hou.node(node.evalParm("camera")):
-            hou.ui.displayMessage(
-                "Invalid camera path.", severity=hou.severityType.Error
-            )
-            return False
-
+        if network == "lop":
+            stage = node.inputs()[0].stage()
+            if not stage.GetPrimAtPath(node.evalParm("camera")):
+                hou.ui.displayMessage(
+                    "Invalid camera path.", severity=hou.severityType.Error
+                )
+                return False
         else:
-            # Make sure the node has an input to render
-            if network == "lop":
-                inputs = node.inputs()
-                if len(inputs) <= 0:
-                    hou.ui.displayMessage(
-                        "Node doesn't have input, please connect this "
-                        "ShotGrid RenderMan render node to "
-                        "the stage to render.",
-                        severity=hou.severityType.Error,
-                    )
-                    return False
-                else:
-                    return True
-            else:
-                return True
-
-    def setup_aovs(self, node: hou.Node, show_notif: bool = True) -> bool:
-        rman = node.node("render")
-
-        if not self.validate_node(node, "rop"):
-            return False
-
-        denoise = node.node("denoise")
-        use_denoise = node.evalParm("denoise")
-
-        beauty = node.evalParm("aovBeauty")
-        deep = node.evalParm("aovDeep")
-
-        aovs = node.parmsInFolder(("AOVs",))
-
-        crypto = list(
-            filter(lambda parm: "Crypto" in parm.name() and parm.eval() == 1, aovs)
-        )
-
-        def make_lightgroups(use_node):
-            light_group = node.parm(use_node.name().replace("Use", ""))
-            return light_group.parmTemplate().label(), light_group.eval()
-
-        lightgroups = list(
-            map(
-                make_lightgroups,
-                list(
-                    filter(
-                        lambda parm: "LGUse" in parm.name() and parm.eval() == 1, aovs
-                    )
-                ),
-            )
-        )
-
-        tee_count = node.evalParm("tees")
-
-        shading = node.parmsInFolder(("AOVs", "Shading"))
-        shading = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, shading)
-        )
-
-        lighting = node.parmsInFolder(("AOVs", "Lighting"))
-        lighting = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, lighting)
-        )
-
-        utility = node.parmsInFolder(("AOVs", "Utility"))
-        utility = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, utility)
-        )
-
-        # SET FILE COUNT
-        file_count = beauty + deep
-        if len(shading):
-            file_count += 1
-        if len(lighting) or len(lightgroups):
-            file_count += 1
-        if len(utility) or tee_count:
-            file_count += 1
-
-        rman.parm("ri_displays").set(0)
-        rman.parm("ri_displays").set(file_count)
-
-        # SETUP FILES
-
-        # Autocrop
-        autocrop = node.evalParm("autocrop")
-        if autocrop:
-            for i in range(file_count):
-                rman.parm("ri_autocrop_" + str(i)).set("true")
-
-        # Denoise
-        denoise.parm("output").set(
-            os.path.dirname(self.get_output_path(node, "denoise"))
-        )
-
-        # Statistics
-        rman.parm("ri_statistics_xmlfilename").set(
-            self.get_output_path(node, "stats")[:-3] + "xml"
-        )
-
-        # TODO add custom aovs
-        # 0: Beauty 16 bit DWAa
-        # 1: Shading 16 bit DWAa
-        # 2: Lighting 16 bit DWAa
-        # 3: Utility 32 bit ZIP
-        # 4: Deep
-        i = 0
-        if beauty:
-            rman.parm("ri_display_" + str(i)).set(self.get_output_path(node, "beauty"))
-
-            rman.parm("ri_asrgba_" + str(i)).set(not use_denoise)
-            rman.parm("ri_exrcompression_" + str(i)).set("dwaa")
-            rman.parm("ri_denoiseon_" + str(i)).set(use_denoise)
-
-            i += 1
-        if len(shading):
-            shading = list(map(lambda p: p.name().replace("aov", ""), shading))
-
-            rman.parm("ri_display_" + str(i)).set(self.get_output_path(node, "beauty"))
-            rman.parm("ri_asrgba_" + str(i)).set(0)
-            rman.parm("ri_exrcompression_" + str(i)).set("dwaa")
-            rman.parm("ri_denoiseon_" + str(i)).set(use_denoise)
-
-            rman.parm("ri_quickaov_Ci_" + str(i)).set(0)
-            rman.parm("ri_quickaov_a_" + str(i)).set(0)
-
-            rman.parm("ri_quickaov_albedo_" + str(i)).set("Albedo" in shading)
-            rman.parm("ri_quickaov_emissive_" + str(i)).set("Emissive" in shading)
-            rman.parm("ri_quickaov_directDiffuse_" + str(i)).set("Diffuse" in shading)
-            rman.parm("ri_quickaov_indirectDiffuse_" + str(i)).set("Diffuse" in shading)
-            rman.parm("ri_quickaov_directDiffuseUnoccluded_" + str(i)).set(
-                "DiffuseU" in shading
-            )
-            rman.parm("ri_quickaov_indirectDiffuseUnoccluded_" + str(i)).set(
-                "DiffuseU" in shading
-            )
-            rman.parm("ri_quickaov_directSpecular_" + str(i)).set("Specular" in shading)
-            rman.parm("ri_quickaov_indirectSpecular_" + str(i)).set(
-                "Specular" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularUnoccluded_" + str(i)).set(
-                "SpecularU" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularUnoccluded_" + str(i)).set(
-                "SpecularU" in shading
-            )
-            rman.parm("ri_quickaov_subsurface_" + str(i)).set("Subsurface" in shading)
-
-            rman.parm("ri_quickaov_directDiffuseLobe_" + str(i)).set(
-                "LobeDiffuse" in shading
-            )
-            rman.parm("ri_quickaov_indirectDiffuseLobe_" + str(i)).set(
-                "LobeDiffuse" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularPrimaryLobe_" + str(i)).set(
-                "LobeSpecularPrimary" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularPrimaryLobe_" + str(i)).set(
-                "LobeSpecularPrimary" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularRoughLobe_" + str(i)).set(
-                "LobeSpecularRough" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularRoughLobe_" + str(i)).set(
-                "LobeSpecularRough" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularClearcoatLobe_" + str(i)).set(
-                "LobeSpecularClearcoat" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularClearcoatLobe_" + str(i)).set(
-                "LobeSpecularClearcoat" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularIridescenceLobe_" + str(i)).set(
-                "LobeSpecularIridescence" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularIridescenceLobe_" + str(i)).set(
-                "LobeSpecularIridescence" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularFuzzLobe_" + str(i)).set(
-                "LobeSpecularFuzz" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularFuzzLobe_" + str(i)).set(
-                "LobeSpecularFuzz" in shading
-            )
-            rman.parm("ri_quickaov_directSpecularGlassLobe_" + str(i)).set(
-                "LobeSpecularGlass" in shading
-            )
-            rman.parm("ri_quickaov_indirectSpecularGlassLobe_" + str(i)).set(
-                "LobeSpecularGlass" in shading
-            )
-            rman.parm("ri_quickaov_subsurfaceLobe_" + str(i)).set(
-                "LobeSubsurface" in shading
-            )
-            rman.parm("ri_quickaov_transmissiveSingleScatterLobe_" + str(i)).set(
-                "LobeTransmissiveSingleScatter" in shading
-            )
-            rman.parm("ri_quickaov_transmissiveGlassLobe_" + str(i)).set(
-                "LobeTransmissiveGlass" in shading
-            )
-
-            i += 1
-        if len(lighting) or len(lightgroups):
-            lighting = list(map(lambda p: p.name().replace("aov", ""), lighting))
-
-            rman.parm("ri_display_" + str(i)).set(
-                self.get_output_path(node, "lighting")
-            )
-            rman.parm("ri_asrgba_" + str(i)).set(0)
-            rman.parm("ri_exrcompression_" + str(i)).set("dwaa")
-            rman.parm("ri_denoiseon_" + str(i)).set(use_denoise)
-
-            rman.parm("ri_quickaov_Ci_" + str(i)).set(0)
-            rman.parm("ri_quickaov_a_" + str(i)).set(0)
-
-            rman.parm("ri_quickaov_occluded_" + str(i)).set(
-                "ShadowOccluded" in lighting
-            )
-            rman.parm("ri_quickaov_unoccluded_" + str(i)).set(
-                "ShadowUnoccluded" in lighting
-            )
-            rman.parm("ri_quickaov_shadow_" + str(i)).set("Shadow" in lighting)
-
-            # Lightgroups
-            rman.parm("ri_numcustomaovs_" + str(i)).set(len(lightgroups))
-
-            for j, group in enumerate(lightgroups):
-                rman.parm("ri_aovvariable_" + str(i) + "_" + str(j)).set(group[0])
-                rman.parm("ri_aovsource_" + str(i) + "_" + str(j)).set(
-                    f"color lpe:C.*<L.'{group[1]}'>"
+            if not hou.node(node.evalParm("camera")):
+                hou.ui.displayMessage(
+                    "Invalid camera path.", severity=hou.severityType.Error
                 )
-
-            i += 1
-        if len(utility) or tee_count:
-            utility = list(map(lambda p: p.name().replace("aov", ""), utility))
-
-            rman.parm("ri_display_" + str(i)).set(self.get_output_path(node, "utility"))
-            rman.parm("ri_asrgba_" + str(i)).set(0)
-            rman.parm("ri_exrpixeltype_" + str(i)).set("float")
-
-            rman.parm("ri_quickaov_Ci_" + str(i)).set(0)
-            rman.parm("ri_quickaov_a_" + str(i)).set(0)
-
-            rman.parm("ri_quickaov_curvature_" + str(i)).set("Pworld" in utility)
-            rman.parm("ri_quickaov_dPdtime_" + str(i)).set("DTime" in utility)
-            rman.parm("ri_quickaov_dPcameradtime_" + str(i)).set(
-                "CameraDTime" in utility
-            )
-
-            rman.parm("ri_quickaov___Pworld_" + str(i)).set("Pworld" in utility)
-            rman.parm("ri_quickaov___Nworld_" + str(i)).set("Nworld" in utility)
-            rman.parm("ri_quickaov___depth_" + str(i)).set("Depth" in utility)
-            rman.parm("ri_quickaov___st_" + str(i)).set("ST" in utility)
-            rman.parm("ri_quickaov___Pref_" + str(i)).set("Pref" in utility)
-            rman.parm("ri_quickaov___Nref_" + str(i)).set("Nref" in utility)
-            rman.parm("ri_quickaov___WPref_" + str(i)).set("WPref" in utility)
-            rman.parm("ri_quickaov___WNref_" + str(i)).set("WNref" in utility)
-
-            # Tees
-            rman.parm("ri_numcustomaovs_" + str(i)).set(tee_count)
-
-            for j in range(tee_count):
-                rman.parm("ri_aovtype_" + str(i) + "_" + str(j)).set(
-                    node.parm("teeType_" + str(j + 1)).evalAsString()
-                )
-                rman.parm("ri_aovvariable_" + str(i) + "_" + str(j)).set(
-                    node.evalParm("teeName_" + str(j + 1))
-                )
-
-            i += 1
-        if deep:
-            rman.parm("ri_display_" + str(i)).set(self.get_output_path(node, "deep"))
-            rman.parm("ri_device_" + str(i)).set("deepexr")
-
-        # CRYPTOMATTE
-        rman.parm("ri_samplefilters").set(len(crypto))
-        for i, c in enumerate(crypto):
-            name = c.name()[3:]
-            cPath = "../aovs/" + name
-            rman.parm("ri_samplefilter" + str(i)).set(cPath)
-            node.parm("./aovs/" + name + "/filename").set(
-                self.get_output_path(node, name)
-            )
-
-        # METADATA
-        md_config = self.app.get_setting("render_metadata")
-
-        md_config_groups = {}
-        for md in md_config:
-            group = md.get("group")
-            if md_config_groups.get(group):
-                md_config_groups.get(group).append(md.get("key"))
-            else:
-                md_config_groups[group] = [md.get("key")]
-        md_config_groups = json.dumps(md_config_groups)
-
-        md_count_node = node.evalParm("ri_exr_metadata") + (len(lightgroups) > 0)
-        md_count_external = len(md_config)
-        md_lg = {}
-        md_lg.update(lg for lg in lightgroups)
-        md_lg = json.dumps(md_lg)
-        md_parms = list(
-            filter(
-                lambda parm: "exr_metadata" in parm.name()
-                and parm.name() != "ri_exr_metadata",
-                node.parms(),
-            )
-        )
-
-        for f in range(file_count):
-            rman.parm("ri_exr_metadata_{}".format(f)).set(
-                md_count_node + md_count_external + (len(md_config) > 0)
-            )
-
-            rman.parm("ri_image_Artist_{}".format(f)).set(
-                str(self.app.context.user["id"])
-            )
-            for parm in md_parms:
-                name = parm.name().split("_")
-                index = -1
-                if name[-1] == "":
-                    index = -2
-                name.insert(index, str(f))
-                name = "_".join(name)
-                self.__set_expression(rman, parm.name(), name)
-
-            if len(lightgroups):
-                rman.parm("ri_exr_metadata_key_{}_{}".format(f, md_count_node - 1)).set(
-                    "rmd_RenderLightGroups"
-                )
-                rman.parm(
-                    "ri_exr_metadata_type_{}_{}".format(f, md_count_node - 1)
-                ).set("string")
-                rman.parm(
-                    "ri_exr_metadata_string_{}_{}_".format(f, md_count_node - 1)
-                ).set(md_lg)
-
-            for i in range(md_count_external):
-                item = md_config[i]
-                rman.parm("ri_exr_metadata_key_{}_{}".format(f, md_count_node + i)).set(
-                    "rmd_{}".format(item.get("key"))
-                )
-                rman.parm(
-                    "ri_exr_metadata_type_{}_{}".format(f, md_count_node + i)
-                ).set(item.get("type"))
-                rman.parm(
-                    "ri_exr_metadata_{}_{}_{}_".format(
-                        item.get("type"), f, md_count_node + i
-                    )
-                ).setExpression(item.get("expression"))
-
-            rman.parm(
-                "ri_exr_metadata_key_{}_{}".format(f, md_count_node + md_count_external)
-            ).set("rmd_PostRenderGroups")
-            rman.parm(
-                "ri_exr_metadata_type_{}_{}".format(
-                    f, md_count_node + md_count_external
-                )
-            ).set("string")
-            rman.parm(
-                "ri_exr_metadata_string_{}_{}_".format(
-                    f, md_count_node + md_count_external
-                )
-            ).set(md_config_groups)
-
-        msg = "Setup AOVs complete with " + str(file_count + len(crypto)) + " files."
-        if show_notif:
-            hou.ui.displayMessage(msg)
-        print("[RenderMan Renderer] " + msg)
+                return False
 
         return True
 
     @staticmethod
-    def __set_expression(node: hou.Node, source_parm: str, dist_parm: str):
+    def _lop_setup_custom_aovs(node: hou.Node, custom_aovs: list[aov_file.CustomAOV]):
+        for i, aov in enumerate(custom_aovs):
+            aov: aov_file.CustomAOV
+            node.parm(f"name{i + 1}").set(aov.name)
+            node.parm(f"format{i + 1}").set(aov.get_format())
+            node.parm(f"dataType{i + 1}").set("")
+            node.parm(f"sourceName{i + 1}").set(aov.lpe)
+            node.parm(f"sourceType{i + 1}").set("lpe")
+
+    @staticmethod
+    def get_active_files(node: hou.Node):
+        output_files = 0
+        active_files = []
+
+        for file in aov_file.output_files:
+            if file.has_active_aovs(node) or file.has_active_custom_aovs(node):
+                active_files.append(file)
+                if file.identifier != aov_file.OutputIdentifier.CRYPTOMATTE:
+                    output_files += 1
+                continue
+
+            # If file is Lighting and there are light groups
+            if (
+                file.identifier == aov_file.OutputIdentifier.LIGHTING
+                and node.parm("light_groups_select").eval() > 0
+            ):
+                active_files.append(file)
+                output_files += 1
+                continue
+
+            # If file is Utility and there are tees
+            if (
+                file.identifier == aov_file.OutputIdentifier.UTILITY
+                and node.parm("tees").eval() > 0
+            ):
+                active_files.append(file)
+                output_files += 1
+                continue
+        return [output_files, active_files]
+
+    def setup_aovs(self, node: hou.Node, show_notification: bool = True) -> bool:
+        is_lop = isinstance(node, hou.LopNode)
+
+        # Validate node
+        if not self.validate_node(node, "lop" if is_lop else "driver"):
+            return False
+
+        use_denoise = node.parm("denoise").eval()
+        use_autocrop = node.parm("autocrop").eval()
+
+        # Get active files
+        output_files, active_files = self.get_active_files(node)
+
+        # Metadata
+        md_config = self.app.get_setting("render_metadata")
+
+        md_items = [
+            MetaData("colorspace", "string", "ACES - ACEScg"),
+        ]
+        md_config_groups = {}
+        for md in md_config:
+            key = f'rmd_{md.get("key")}'
+            md_items.append(
+                MetaData(
+                    key,
+                    md.get("type"),
+                    f'`{md.get("expression")}`'
+                    if md.get("expression")
+                    else md.get("value"),
+                )
+            )
+            group = md.get("group")
+            # TODO should use prefixed version in group mapping?
+            if md_config_groups.get(group):
+                md_config_groups.get(group).append(key)
+            else:
+                md_config_groups[group] = [key]
+        md_items.append(
+            MetaData("rmd_PostRenderGroups", "string", json.dumps(md_config_groups))
+        )
+
+        md_artist = str(self.app.context.user["id"])
+
+        self.app.logger.debug(
+            f"Setting up aovs for files: {', '.join([file.identifier.value for file in active_files])}"
+        )
+
+        if is_lop:
+            node_rman = node.node("render_settings")
+            node_aovs = node.node("aovs")
+            node_products = node.node("output_files")
+
+            if output_files > 1:
+                node_products.parm("products").set(output_files - 1)
+
+            # Disable all
+            for group in node_aovs.parmTemplateGroup().parmTemplates():
+                parms: list[hou.ParmTemplate, ...] = [
+                    parm
+                    for parm in group.parmTemplates()
+                    if "precision" not in parm.name()
+                ]
+                for parm in parms:
+                    node_rman.parm(parm.name()).set(False)
+                    node_aovs.parm(parm.name()).set(False)
+
+            custom_aovs: list[aov_file.CustomAOV] = []
+
+            # Enable active AOVs
+            for i, file in enumerate(active_files):
+                file: aov_file.OutputFile
+
+                # Crypto
+                if file.identifier == aov_file.OutputIdentifier.CRYPTOMATTE:
+                    cryptomattes = [
+                        crypto
+                        for crypto in file.options
+                        if node.parm(crypto.key).eval()
+                    ]
+                    for j in range(0, len(file.options)):
+                        if j < len(cryptomattes):
+                            crypto = cryptomattes[j]
+                            node_rman.parm(f"xn__risamplefilter{j}name_w6an").set(
+                                "PxrCryptomatte"
+                            )
+                            node_rman.parm(
+                                f"xn__risamplefilter{j}PxrCryptomattefilename_70bno"
+                            ).set(self.get_output_path(node, crypto.key))
+                            node_rman.parm(
+                                f"xn__risamplefilter{j}PxrCryptomattelayer_cwbno"
+                            ).set(crypto.aovs[0])
+                        else:
+                            node_rman.parm(f"xn__risamplefilter{j}name_w6an").set(
+                                "None"
+                            )
+                    continue
+
+                # Add custom AOVs
+                try:
+                    local_custom_aovs = file.get_active_custom_aovs(node)
+                except Exception as e:
+                    self._error(f"Something is wrong with one or more of the AOVs", e)
+                    return False
+
+                # For first aov
+                if i == 0:
+                    # Set file output path
+                    node_rman.parm("picture").set(
+                        self.get_output_path(node, file.identifier.lower())
+                    )
+
+                    # Set as RGBA
+                    node_rman.parm(f"xn__driverparametersopenexrasrgba_bobkh").set(
+                        file.as_rgba and not (file.can_denoise and use_denoise)
+                    )
+
+                    # Set output type
+                    if file.identifier == aov_file.OutputIdentifier.DEEP:
+                        node_rman.parm("productType").set("deepexr")
+                    # Set use autocrop
+                    node_rman.parm("xn__driverparametersopenexrautocrop_krbkh").set(
+                        "on" if use_autocrop else "off"
+                    )
+                    # Set bitdepth level
+                    node_rman.parm("xn__driverparametersopenexrexrpixeltype_2xbkh").set(
+                        file.bitdepth
+                    )
+                    # Set compression type
+                    node_rman.parm(
+                        "xn__driverparametersopenexrexrcompression_c1bkh"
+                    ).set(file.compression)
+
+                    # Add custom AOVs
+                    node_rman.parm("extrarendervars").set(0)
+                    node_rman.parm("extrarendervars").set(len(local_custom_aovs))
+                    self._lop_setup_custom_aovs(node_rman, local_custom_aovs)
+                # And the others
+                else:
+                    custom_aovs += local_custom_aovs
+
+                    # Set file settings
+                    node_products.parm(f"primname_{i - 1}").set(
+                        file.identifier.value.lower()
+                    )
+                    # Set file output path
+                    node_products.parm(f"productName_{i - 1}").set(
+                        self.get_output_path(node, file.identifier.lower())
+                    )
+                    if file.identifier == aov_file.OutputIdentifier.DEEP:
+                        node_products.parm(f"productType_{i - 1}").set("deepexr")
+                    node_products.parm(f"doorderedVars_{i - 1}").set(True)
+                    node_products.parm(f"orderedVars_{i - 1}").set(
+                        " ".join(
+                            [
+                                f"/Render/Products/Vars/{aov}"
+                                for aov in file.get_active_aovs(node)
+                            ]
+                            + [
+                                f"/Render/Products/Vars/{aov.name}"
+                                for aov in local_custom_aovs
+                            ]
+                        )
+                    )
+                    node_products.parm(f"autocrop_{i - 1}").set(use_autocrop)
+                    node_products.parm(f"openexr_bitdepth_{i - 1}").set(file.bitdepth)
+                    node_products.parm(f"openexr_compression_{i - 1}").set(
+                        file.compression
+                    )
+
+                # Enable active AOVs
+                active_node = node_rman if i == 0 else node_aovs
+                for active_aov in file.get_active_aovs(node):
+                    active_node.parm(active_aov).set(True)
+
+            node_custom_aovs = node.node("custom_aovs")
+            node_custom_aovs.parm("rendervars").set(0)
+            node_custom_aovs.parm("rendervars").set(len(custom_aovs))
+            self._lop_setup_custom_aovs(node_custom_aovs, custom_aovs)
+
+            # Statistics
+            node_rman.parm("xn__ristatisticsxmlfilename_febk").set(
+                self.get_output_path(node, "stats")[:-3] + "xml"
+            )
+
+            # Metadata
+            # Check if custom metadata has valid keys
+            for j in range(1, node.evalParm("metadata_entries") + 1):
+                md_key = node.parm(f"metadata_{j}_key").eval()
+                if not re.match(r"^[A-Za-z0-9_]+$", md_key):
+                    hou.ui.displayMessage(
+                        f'The metadata key "{md_key}" is invalid. You can only use letters, numbers, and '
+                        f"underscores.",
+                        severity=hou.severityType.Error,
+                    )
+                    return False
+
+            node_md = node.node("sg_metadata")
+
+            node_md.parm("artist").set(md_artist)
+
+            node_md.parm("metadata_entries").set(0)
+            node_md.parm("metadata_entries").set(len(md_items))
+
+            for i, item in enumerate(md_items):
+                item: MetaData
+
+                node_md.parm(f"metadata_{i + 1}_key").set(item.key)
+                node_md.parm(f"metadata_{i + 1}_type").set(item.type)
+                if "`" in item.value:
+                    expression = item.value[1:-1]
+                    expression = re.sub(
+                        r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
+                    )
+
+                    node_md.parm(f"metadata_{i + 1}_{item.type}").setExpression(
+                        expression
+                    )
+                else:
+                    node_md.parm(f"metadata_{i + 1}_{item.type}").set(item.value)
+        else:
+            rman = node.node("render")
+            rman.parm("ri_displays").set(0)
+            rman.parm("ri_displays").set(output_files)
+
+            # Denoise
+            node.node("denoise").parm("output").set(
+                os.path.dirname(self.get_output_path(node, "denoise"))
+            )
+
+            # Statistics
+            rman.parm("ri_statistics_xmlfilename").set(
+                self.get_output_path(node, "stats")[:-3] + "xml"
+            )
+
+            for i, file in enumerate(active_files):
+                file: aov_file.OutputFile
+
+                # Crypto
+                if file.identifier == aov_file.OutputIdentifier.CRYPTOMATTE:
+                    cryptomattes = [
+                        crypto
+                        for crypto in file.options
+                        if node.parm(crypto.key).eval()
+                    ]
+
+                    rman.parm("ri_samplefilters").set(0)
+                    rman.parm("ri_samplefilters").set(len(cryptomattes))
+                    for j, c in enumerate(cryptomattes):
+                        name = f"Crypto{c.name}"
+                        rman.parm(f"ri_samplefilter{j}").set(f"../aovs/{name}")
+                        node.parm("./aovs/" + name + "/filename").set(
+                            self.get_output_path(node, name)
+                        )
+                    continue
+
+                rman.parm(f"ri_display_{i}").set(
+                    self.get_output_path(node, file.identifier.lower())
+                )
+
+                if file.identifier == aov_file.OutputIdentifier.DEEP:
+                    rman.parm(f"ri_device_{i}").set("deepexr")
+
+                rman.parm(f"ri_autocrop_{i}").set("on" if use_autocrop else "off")
+                rman.parm(f"ri_exrpixeltype_{i}").set(file.bitdepth)
+                rman.parm(f"ri_exrcompression_{i}").set(file.compression)
+
+                denoise_on = file.can_denoise and use_denoise
+                rman.parm(f"ri_denoiseon_{i}").set(denoise_on)
+
+                rman.parm(f"ri_asrgba_{i}").set(file.as_rgba and not denoise_on)
+
+                # Disable defaults
+                rman.parm(f"ri_quickaov_Ci_{i}").set(False)
+                rman.parm(f"ri_quickaov_a_{i}").set(False)
+
+                # Enable active AOVs
+                for aov in file.get_active_aovs(node):
+                    rman.parm(f"ri_quickaov_{aov}_{i}").set(True)
+
+                # Add custom AOVs
+                custom_aovs = file.get_active_custom_aovs(node)
+
+                rman.parm(f"ri_numcustomaovs_{i}").set(0)
+                rman.parm(f"ri_numcustomaovs_{i}").set(len(custom_aovs))
+                for j, aov in enumerate(custom_aovs):
+                    aov: aov_file.CustomAOV
+                    rman.parm(f"ri_aovvariable_{i}_{j}").set(aov.name)
+                    rman.parm(f"ri_aovtype_{i}_{j}").set(aov.type)
+                    rman.parm(f"ri_aovsource_{i}_{j}").set(aov.lpe)
+
+                node_md = node.node("render")
+                for j in range(1, node.evalParm("metadata_entries") + 1):
+                    md_key = node.parm(f"metadata_{j}_key").eval()
+                    md_type = node.parm(f"metadata_{j}_type").evalAsString()
+                    md_value_parm = node.parm(f"metadata_{j}_{md_type}")
+                    try:
+                        md_value = f"`{md_value_parm.expression()}`"
+                    except:
+                        md_value = md_value_parm.rawValue()
+
+                    md_items.append(MetaData(md_key, md_type, md_value))
+
+                node_md.parm(f"ri_exr_metadata_{i}").set(0)
+                node_md.parm(f"ri_exr_metadata_{i}").set(len(md_items))
+
+                node_md.parm(f"ri_image_Artist_{i}").set(md_artist)
+
+                for j, item in enumerate(md_items):
+                    item: MetaData
+
+                    node_md.parm(f"ri_exr_metadata_key_{i}_{j}").set(item.key)
+                    node_md.parm(f"ri_exr_metadata_type_{i}_{j}").set(item.type)
+                    if "`" in item.value:
+                        expression = item.value[1:-1]
+                        expression = re.sub(
+                            r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
+                        )
+
+                        node_md.parm(
+                            f"ri_exr_metadata_{item.type}_{i}_{j}_"
+                        ).setExpression(expression)
+                    else:
+                        node_md.parm(f"ri_exr_metadata_{item.type}_{i}_{j}_").set(
+                            item.value
+                        )
+
+        msg = f"Setup AOVs complete with {len(active_files)} files."
+        if show_notification:
+            hou.ui.displayMessage(msg)
+        self.app.logger.debug(msg)
+
+        return True
+
+    @staticmethod
+    def _set_expression(node: hou.Node, source_parm: str, dist_parm: str):
         org_parm = node.parm(dist_parm).parmTemplate()
         if not org_parm:
             print("parm not found: ", dist_parm)
@@ -530,14 +734,15 @@ class TkRenderManNodeHandler(object):
             '{}("{}{}")'.format(parm_type, "../", source_parm)
         )
 
-    def get_output_path(self, node: hou.Node, aov_name: str, network="rop") -> str:
+    def get_output_path(self, node: hou.Node, aov_name: str) -> str:
         """Calculate render path for an aov
 
         Args:
             node (hou.Node): RenderMan node
             aov_name (str): AOV name
-            network (str): Network type
         """
+        is_lop = isinstance(node, hou.LopNode)
+
         aov_name = aov_name[0].lower() + aov_name[1:]
 
         current_filepath = hou.hipFile.path()
@@ -555,7 +760,7 @@ class TkRenderManNodeHandler(object):
 
         # Because RenderMan in the rop network uses different
         # parameter names, we need to change some bits
-        if network == "rop":
+        if not is_lop:
             camera = node.parm("camera").eval()
 
             evaluate_parm = False
@@ -582,7 +787,6 @@ class TkRenderManNodeHandler(object):
         if evaluate_parm is True:
             fields["width"] = node.parm(resolution_x_field).eval()
             fields["height"] = node.parm(resolution_y_field).eval()
-
         else:
             fields["width"] = resolution_x
             fields["height"] = resolution_y
@@ -592,46 +796,25 @@ class TkRenderManNodeHandler(object):
     def get_output_paths(self, node: hou.Node) -> list[str]:
         paths = []
 
-        aovs = node.parmsInFolder(("AOVs",))
+        print(node.path())
 
-        crypto = list(
-            filter(lambda parm: "Crypto" in parm.name() and parm.eval() == 1, aovs)
-        )
-
-        lightgroups = list(
-            filter(lambda parm: "LGUse" in parm.name() and parm.eval() == 1, aovs)
-        )
-
-        shading = node.parmsInFolder(("AOVs", "Shading"))
-        shading = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, shading)
-        )
-
-        lighting = node.parmsInFolder(("AOVs", "Lighting"))
-        lighting = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, lighting)
-        )
-
-        utility = node.parmsInFolder(("AOVs", "Utility"))
-        utility = list(
-            filter(lambda parm: "aov" in parm.name() and parm.eval() == 1, utility)
-        )
-
-        if node.evalParm("aovBeauty"):
-            paths.append(self.get_output_path(node, "beauty"))
-        if len(shading):
-            paths.append(self.get_output_path(node, "shading"))
-        if len(lighting) or len(lightgroups):
-            paths.append(self.get_output_path(node, "lighting"))
-        if len(utility) or node.evalParm("tees"):
-            paths.append(self.get_output_path(node, "utility"))
-        if node.evalParm("aovDeep"):
-            paths.append(self.get_output_path(node, "deep"))
-
-        # Cryptomatte
-        for i, c in enumerate(crypto):
-            name = c.name()[3:]
-            paths.append(self.get_output_path(node, name))
+        try:
+            output_files, active_files = self.get_active_files(node)
+            for file in active_files:
+                file: aov_file.OutputFile
+                if file.identifier == aov_file.OutputIdentifier.CRYPTOMATTE:
+                    for crypto in file.options:
+                        print(crypto.key)
+                        if node.parm(crypto.key).eval():
+                            paths.append(self.get_output_path(node, crypto.key))
+                else:
+                    paths.append(self.get_output_path(node, file.identifier.lower()))
+        except Exception as e:
+            self._error(
+                f'Something is wrong with one or more of the AOVs on node "{node.name()}"',
+                e,
+            )
+            return []
 
         # Denoise
         if node.evalParm("denoise"):
