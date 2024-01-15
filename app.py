@@ -78,7 +78,9 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
     @staticmethod
     def get_all_renderman_nodes() -> tuple[Node]:
         """Get all nodes from node type sgtk_hdprman"""
-        return hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
+        rop_nodes = hou.ropNodeTypeCategory().nodeType("sgtk_ris").instances()
+        lop_nodes = hou.lopNodeTypeCategory().nodeType("sgtk_ris").instances()
+        return rop_nodes + lop_nodes
 
     def get_output_path(
         self, node: hou.Node, aov_name: str, network: str = "rop"
