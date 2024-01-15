@@ -429,6 +429,58 @@ class TkRenderManNodeHandler(object):
 
         md_artist = str(self.app.context.user["id"])
 
+        # Metadata get used publish versions
+        current_engine = sgtk.platform.current_engine()
+        breakdown_app = current_engine.apps["tk-multi-breakdown"]
+
+        if breakdown_app:
+            self.app.logger.debug(
+                "Getting used publish versions with tk-multi-breakdown."
+            )
+
+            used_versions = []
+
+            # Get list of breakdown items
+            published_items = breakdown_app.analyze_scene()
+
+            # Now loop over all items
+            for published_item in published_items:
+                # Get the latest version on disk
+                latest_version = breakdown_app.compute_highest_version(
+                    published_item["template"], published_item["fields"]
+                )
+
+                fields = published_item["fields"]
+                entity_type = published_item["sg_data"]["entity"]["type"]
+
+                version = {
+                    "version": published_item["sg_data"]["version_number"],
+                    "latest_version": latest_version,
+                    "type": entity_type,
+                }
+
+                if entity_type == "Shot":
+                    version[
+                        "name"
+                    ] = f"{fields['Sequence']} {fields['Shot']} {fields['Step']} {fields['name']}"
+                elif entity_type == "Asset":
+                    version[
+                        "name"
+                    ] = f"{fields['Asset']} {fields['Step']} {fields['name']}"
+                else:
+                    version["name"] = "Undefined"
+
+                used_versions.append(version)
+
+            md_items.append(
+                MetaData("rmd_UsedPublishVersions", "string", json.dumps(used_versions))
+            )
+
+        else:
+            self.app.logger.debug(
+                "The app tk-multi-breakdown is not installed, skipping used publish version metadata."
+            )
+
         self.app.logger.debug(
             f"Setting up aovs for files: {', '.join([file.identifier.value for file in active_files])}"
         )
@@ -796,15 +848,12 @@ class TkRenderManNodeHandler(object):
     def get_output_paths(self, node: hou.Node) -> list[str]:
         paths = []
 
-        print(node.path())
-
         try:
             output_files, active_files = self.get_active_files(node)
             for file in active_files:
                 file: aov_file.OutputFile
                 if file.identifier == aov_file.OutputIdentifier.CRYPTOMATTE:
                     for crypto in file.options:
-                        print(crypto.key)
                         if node.parm(crypto.key).eval():
                             paths.append(self.get_output_path(node, crypto.key))
                 else:
