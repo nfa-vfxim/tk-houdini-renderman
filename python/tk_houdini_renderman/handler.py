@@ -641,24 +641,22 @@ class TkRenderManNodeHandler(object):
             node_md.parm("metadata_entries").set(0)
             node_md.parm("metadata_entries").set(len(md_items))
 
-            for i, published_item in enumerate(md_items):
-                published_item: MetaData
+            for i, item in enumerate(md_items):
+                item: MetaData
 
-                node_md.parm(f"metadata_{i + 1}_key").set(published_item.key)
-                node_md.parm(f"metadata_{i + 1}_type").set(published_item.type)
-                if "`" in published_item.value:
-                    expression = published_item.value[1:-1]
+                node_md.parm(f"metadata_{i + 1}_key").set(item.key)
+                node_md.parm(f"metadata_{i + 1}_type").set(item.type)
+                if "`" in item.value:
+                    expression = item.value[1:-1]
                     expression = re.sub(
                         r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
                     )
 
-                    node_md.parm(
-                        f"metadata_{i + 1}_{published_item.type}"
-                    ).setExpression(expression)
-                else:
-                    node_md.parm(f"metadata_{i + 1}_{published_item.type}").set(
-                        published_item.value
+                    node_md.parm(f"metadata_{i + 1}_{item.type}").setExpression(
+                        expression
                     )
+                else:
+                    node_md.parm(f"metadata_{i + 1}_{item.type}").set(item.value)
         else:
             rman = node.node("render")
             rman.parm("ri_displays").set(0)
@@ -747,26 +745,24 @@ class TkRenderManNodeHandler(object):
 
                 node_md.parm(f"ri_image_Artist_{i}").set(md_artist)
 
-                for j, published_item in enumerate(md_items):
-                    published_item: MetaData
+                for j, item in enumerate(md_items):
+                    item: MetaData
 
-                    node_md.parm(f"ri_exr_metadata_key_{i}_{j}").set(published_item.key)
-                    node_md.parm(f"ri_exr_metadata_type_{i}_{j}").set(
-                        published_item.type
-                    )
-                    if "`" in published_item.value:
-                        expression = published_item.value[1:-1]
+                    node_md.parm(f"ri_exr_metadata_key_{i}_{j}").set(item.key)
+                    node_md.parm(f"ri_exr_metadata_type_{i}_{j}").set(item.type)
+                    if "`" in item.value:
+                        expression = item.value[1:-1]
                         expression = re.sub(
                             r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
                         )
 
                         node_md.parm(
-                            f"ri_exr_metadata_{published_item.type}_{i}_{j}_"
+                            f"ri_exr_metadata_{item.type}_{i}_{j}_"
                         ).setExpression(expression)
                     else:
-                        node_md.parm(
-                            f"ri_exr_metadata_{published_item.type}_{i}_{j}_"
-                        ).set(published_item.value)
+                        node_md.parm(f"ri_exr_metadata_{item.type}_{i}_{j}_").set(
+                            item.value
+                        )
 
         msg = f"Setup AOVs complete with {len(active_files)} files."
         if show_notification:
