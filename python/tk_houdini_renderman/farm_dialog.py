@@ -168,36 +168,44 @@ class FarmSubmission(QtWidgets.QWidget):
 
         deadline_path = os.getenv("DEADLINE_PATH")
 
-        post_task_script = self.app.get_setting("post_task_script")
-
         # Building job info properties
         job_info = [
             "Plugin=Houdini",
-            "Frames=" + framerange,
-            "Priority=" + priority,
-            "ConcurrentTasks=" + concurrent_tasks,
-            "ChunkSize=" + str(frames_per_task),
-            "Name=" + submission_name,
+            f"Frames={framerange}",
+            f"Priority={priority}",
+            f"ConcurrentTasks={concurrent_tasks}",
+            f"ChunkSize={frames_per_task}",
+            f"Name={submission_name}",
             "Department=3D",
             "EnvironmentKeyValue0 = RENDER_ENGINE = RenderMan",
         ]
 
+        # Batch name
+        batch_name_template = self.app.get_template("deadline_batch_name")
+        if batch_name_template:
+            work_template = self.app.get_template("work_file_template")
+            fields = work_template.get_fields(hou.hipFile.path())
+            batch_name = batch_name_template.apply_fields(fields)
+            job_info.append(f"BatchName={batch_name}")
+
         # TODO create post task script for lop denoise renders
+        post_task_script = self.app.get_setting("post_task_script")
+
         if self.network == "rop" and post_task_script:
-            job_info.append("PostTaskScript=" + post_task_script)
+            job_info.append(f"PostTaskScript={post_task_script}")
 
         for i, path in enumerate(self.render_paths):
             output_directory = os.path.dirname(path)
-            job_info.append("OutputDirectory{}={}".format(i, output_directory))
+            job_info.append(f"OutputDirectory{i}={output_directory}")
             if not path.endswith("denoise"):
                 output_filename = os.path.basename(path).replace("$F4", "%04d")
-                job_info.append("OutputFilename{}={}".format(i, output_filename))
+                job_info.append(f"OutputFilename{i}={output_filename}")
 
         # Building plugin info properties
         plugin_info = [
-            "OutputDriver=" + render_rop_node,
-            "Version=" + houdini_version,
-            "SceneFile=" + houdini_file,
+            f"OutputDriver={render_rop_node}",
+            f"Version={houdini_version}",
+            f"SceneFile={houdini_file}",
         ]
         # Save the file before submitting
         if hou.hipFile.hasUnsavedChanges():
