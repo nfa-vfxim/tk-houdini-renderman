@@ -31,6 +31,12 @@ configuration:
         fields: context, version, SEQ, [aov_name], [name], [width], [height], *
         description: A template which describes the output of the render.
 
+    deadline_batch_name:
+        type: template
+        fields: context, *
+        allows_empty: True
+        description: A template which describes the current Houdini work hip file. Used to fetch version.
+
     render_metadata:
         type: list
         description: A list of Render Metadata (RMD) to add to the renders. The key will be prefixed with "rmd_"
