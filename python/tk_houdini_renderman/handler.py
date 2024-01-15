@@ -429,6 +429,58 @@ class TkRenderManNodeHandler(object):
 
         md_artist = str(self.app.context.user["id"])
 
+        # Metadata get used publish versions
+        current_engine = sgtk.platform.current_engine()
+        breakdown_app = current_engine.apps["tk-multi-breakdown"]
+
+        if breakdown_app:
+            self.app.logger.debug(
+                "Getting used publish versions with tk-multi-breakdown."
+            )
+
+            used_versions = []
+
+            # Get list of breakdown items
+            published_items = breakdown_app.analyze_scene()
+
+            # Now loop over all items
+            for published_item in published_items:
+                # Get the latest version on disk
+                latest_version = breakdown_app.compute_highest_version(
+                    published_item["template"], published_item["fields"]
+                )
+
+                fields = published_item["fields"]
+                entity_type = published_item["sg_data"]["entity"]["type"]
+
+                version = {
+                    "version": published_item["sg_data"]["version_number"],
+                    "latest_version": latest_version,
+                    "type": entity_type,
+                }
+
+                if entity_type == "Shot":
+                    version[
+                        "name"
+                    ] = f"{fields['Sequence']} {fields['Shot']} {fields['Step']} {fields['name']}"
+                elif entity_type == "Asset":
+                    version[
+                        "name"
+                    ] = f"{fields['Asset']} {fields['Step']} {fields['name']}"
+                else:
+                    version["name"] = "Undefined"
+
+                used_versions.append(version)
+
+            md_items.append(
+                MetaData("rmd_UsedPublishVersions", "string", json.dumps(used_versions))
+            )
+
+        else:
+            self.app.logger.debug(
+                "The app tk-multi-breakdown is not installed, skipping used publish version metadata."
+            )
+
         self.app.logger.debug(
             f"Setting up aovs for files: {', '.join([file.identifier.value for file in active_files])}"
         )
@@ -589,22 +641,24 @@ class TkRenderManNodeHandler(object):
             node_md.parm("metadata_entries").set(0)
             node_md.parm("metadata_entries").set(len(md_items))
 
-            for i, item in enumerate(md_items):
-                item: MetaData
+            for i, published_item in enumerate(md_items):
+                published_item: MetaData
 
-                node_md.parm(f"metadata_{i + 1}_key").set(item.key)
-                node_md.parm(f"metadata_{i + 1}_type").set(item.type)
-                if "`" in item.value:
-                    expression = item.value[1:-1]
+                node_md.parm(f"metadata_{i + 1}_key").set(published_item.key)
+                node_md.parm(f"metadata_{i + 1}_type").set(published_item.type)
+                if "`" in published_item.value:
+                    expression = published_item.value[1:-1]
                     expression = re.sub(
                         r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
                     )
 
-                    node_md.parm(f"metadata_{i + 1}_{item.type}").setExpression(
-                        expression
-                    )
+                    node_md.parm(
+                        f"metadata_{i + 1}_{published_item.type}"
+                    ).setExpression(expression)
                 else:
-                    node_md.parm(f"metadata_{i + 1}_{item.type}").set(item.value)
+                    node_md.parm(f"metadata_{i + 1}_{published_item.type}").set(
+                        published_item.value
+                    )
         else:
             rman = node.node("render")
             rman.parm("ri_displays").set(0)
@@ -693,24 +747,26 @@ class TkRenderManNodeHandler(object):
 
                 node_md.parm(f"ri_image_Artist_{i}").set(md_artist)
 
-                for j, item in enumerate(md_items):
-                    item: MetaData
+                for j, published_item in enumerate(md_items):
+                    published_item: MetaData
 
-                    node_md.parm(f"ri_exr_metadata_key_{i}_{j}").set(item.key)
-                    node_md.parm(f"ri_exr_metadata_type_{i}_{j}").set(item.type)
-                    if "`" in item.value:
-                        expression = item.value[1:-1]
+                    node_md.parm(f"ri_exr_metadata_key_{i}_{j}").set(published_item.key)
+                    node_md.parm(f"ri_exr_metadata_type_{i}_{j}").set(
+                        published_item.type
+                    )
+                    if "`" in published_item.value:
+                        expression = published_item.value[1:-1]
                         expression = re.sub(
                             r"(ch[a-z]*)(\()([\"'])", r"\1(\3../", expression
                         )
 
                         node_md.parm(
-                            f"ri_exr_metadata_{item.type}_{i}_{j}_"
+                            f"ri_exr_metadata_{published_item.type}_{i}_{j}_"
                         ).setExpression(expression)
                     else:
-                        node_md.parm(f"ri_exr_metadata_{item.type}_{i}_{j}_").set(
-                            item.value
-                        )
+                        node_md.parm(
+                            f"ri_exr_metadata_{published_item.type}_{i}_{j}_"
+                        ).set(published_item.value)
 
         msg = f"Setup AOVs complete with {len(active_files)} files."
         if show_notification:
@@ -796,15 +852,12 @@ class TkRenderManNodeHandler(object):
     def get_output_paths(self, node: hou.Node) -> list[str]:
         paths = []
 
-        print(node.path())
-
         try:
             output_files, active_files = self.get_active_files(node)
             for file in active_files:
                 file: aov_file.OutputFile
                 if file.identifier == aov_file.OutputIdentifier.CRYPTOMATTE:
                     for crypto in file.options:
-                        print(crypto.key)
                         if node.parm(crypto.key).eval():
                             paths.append(self.get_output_path(node, crypto.key))
                 else:
