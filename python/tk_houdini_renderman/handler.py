@@ -445,30 +445,32 @@ class TkRenderManNodeHandler(object):
 
             # Now loop over all items
             for published_item in published_items:
+                fields = published_item["fields"]
+
                 # Get the latest version on disk
                 latest_version = breakdown_app.compute_highest_version(
-                    published_item["template"], published_item["fields"]
+                    published_item["template"], fields
                 )
 
-                fields = published_item["fields"]
-                entity_type = published_item["sg_data"]["entity"]["type"]
-
                 version = {
-                    "version": published_item["sg_data"]["version_number"],
+                    "version": fields["version"],
                     "latest_version": latest_version,
-                    "type": entity_type,
+                    "published": False,
                 }
 
-                if entity_type == "Shot":
+                if "Shot" in fields:
+                    version["type"] = "Shot"
                     version[
                         "name"
                     ] = f"{fields['Sequence']} {fields['Shot']} {fields['Step']} {fields['name']}"
-                elif entity_type == "Asset":
+                elif "Asset" in fields:
+                    version["type"] = "Asset"
                     version[
                         "name"
                     ] = f"{fields['Asset']} {fields['Step']} {fields['name']}"
-                else:
-                    version["name"] = "Undefined"
+
+                if published_item["sg_data"]:
+                    version["published"] = True
 
                 used_versions.append(version)
 
