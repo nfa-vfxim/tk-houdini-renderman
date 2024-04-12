@@ -871,7 +871,7 @@ class TkRenderManNodeHandler(object):
         if node.evalParm("denoise"):
             paths.append(self.get_output_path(node, "denoise"))
 
-        # Statistiscs
+        # Statistics
         paths.append(self.get_output_path(node, "stats")[:-3] + "xml")
 
         return paths
@@ -1037,47 +1037,36 @@ class TkRenderManNodeHandler(object):
         regex = r"[$][fF]\d"
 
         # Get the raw string from the picture parameter
+        for file_path in self.get_output_paths(node):
+            # Detect "$F4" in the file path, and return it
+            frame_match = re.search(regex, file_path)
+            frame_match = frame_match.group(0)
 
-        if node.type().nameComponents()[2] == "sgtk_ris":
-            parameter = "ri_display_0"
-        else:
-            parameter = "picture"
+            # Detect the padding number specified
+            padding_length = re.search("[0-9]", frame_match)
+            padding_length = padding_length.group(0)
 
-        file_path = node.node("render").parm(parameter).rawValue()
+            # Replace $F4 with %04d format
+            file_name = file_path.replace(frame_match, "%0" + str(padding_length) + "d")
+            file_name = os.path.basename(file_name)
 
-        # Detect "$F4" in the file path, and return it
-        frame_match = re.search(regex, file_path)
-        frame_match = frame_match.group(0)
+            # Get current project ID
+            current_engine = sgtk.platform.current_engine()
+            current_context = current_engine.context
+            project_id = current_context.project["id"]
 
-        # Detect the padding number specified
-        padding_length = re.search("[0-9]", frame_match)
-        padding_length = padding_length.group(0)
+            # Create the filter to search on ShotGrid for publishes with the same file name
+            filters = [
+                ["project", "is", {"type": "Project", "id": project_id}],
+                ["code", "is", file_name],
+            ]
 
-        # Replace $F4 with %04d format
-        file_name = file_path.replace(frame_match, "%0" + str(padding_length) + "d")
-        file_name = os.path.basename(file_name)
+            # Search on ShotGrid
+            published_file = sg.find_one("PublishedFile", filters)
 
-        # Get current project ID
-        current_engine = sgtk.platform.current_engine()
-        current_context = current_engine.context
-        project_id = current_context.project["id"]
+            # If the value is not None, there is a publish with the
+            # same name. So set the variable is_published to "True
+            if published_file is not None:
+                return True
 
-        # Create the filter to search on ShotGrid for publishes with the same file name
-        filters = [
-            ["project", "is", {"type": "Project", "id": project_id}],
-            ["code", "is", file_name],
-        ]
-
-        # Search on ShotGrid
-        published_file = sg.find_one("PublishedFile", filters)
-
-        # If there is no publish, it will return a None value.
-        # So set the variable is_published to "False"
-        if published_file is None:
-            is_published = False
-        # If the value is not None, there is a publish with the
-        # same name. So set the variable is_published to "True
-        else:
-            is_published = True
-
-        return is_published
+        return False
