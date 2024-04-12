@@ -1,3 +1,16 @@
+"""
+Run from Houdini python shell to build HDAs:
+exec(open(r"D:\Developer\Pipeline\tk-houdini-renderman\otls\create_otl.py").read())
+
+Generated outputs
+    ShotGrid:
+        driver_sgtk_ris.otl
+        lop_sgtk_ris.otl
+    Non-ShotGrid:
+        driver_RenderMan_Renderer.otl
+        lop_RenderMan_Renderer.otl
+"""
+
 import logging
 import re
 import string
@@ -6,10 +19,6 @@ from enum import Enum
 from typing import Callable
 
 import hou
-
-
-# Run from Houdini python shell to build HDAs:
-# exec(open(r"D:\Developer\Pipeline\tk-houdini-renderman\otls\create_otl.py").read())
 
 
 class OTLTypes(Enum):
