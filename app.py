@@ -66,14 +66,13 @@ class TkHoudiniRenderMan(sgtk.platform.Application):
         """
         self.handler.submit_to_farm(node)
 
-    def copy_to_clipboard(self, node, network=None):
+    def copy_to_clipboard(self, node):
         """Copy render path to clipboard
 
         Args:
             node (hou.Node): RenderMan node
-            network (str): Network type
         """
-        self.handler.copy_to_clipboard(node, network)
+        self.handler.copy_to_clipboard(node)
 
     @staticmethod
     def get_all_renderman_nodes() -> tuple[Node]:

@@ -24,6 +24,7 @@ import json
 import os
 import platform
 import re
+from typing import Optional
 
 import hou
 import sgtk
@@ -120,7 +121,7 @@ class TkRenderManNodeHandler(object):
                 "execute"
             ).pressButton()
 
-    def copy_to_clipboard(self, node: hou.Node, network: str = None):
+    def copy_to_clipboard(self, node: hou.Node):
         """Function to copy the path directly to the clipboard,
         currently only Windows is supported
 
@@ -132,19 +133,33 @@ class TkRenderManNodeHandler(object):
         # Function to copy the path directly to the clipboard,
         # currently only Windows is supported
         if platform.system() == "Windows":
-            if network == "rop":
-                parameter = "ri_display_0"
-            else:
-                parameter = "picture"
+            output_paths = self.get_output_paths(node)
 
-            render_path = node.parm(parameter).eval()
-            render_path = os.path.dirname(render_path).replace("/", os.sep)
+            render_paths = {}
+            for path in output_paths:
+                aov_name = self.get_output_path_aov_name(path)
+                if aov_name is None:
+                    continue
+
+                render_paths[aov_name] = path
+
+            result = hou.ui.selectFromTree(
+                list(render_paths.keys()),
+                title="Select an output to copy.",
+                exclusive=True,
+                height=min((len(render_paths) + 1) * 30, 320),
+            )
+            if len(result) == 0:
+                return
+
+            render_path = render_paths[result[0]].replace("/", os.sep)
             copy_to_clipboard = 'echo|set /p="' + render_path.strip() + '"| clip'
             os.system(copy_to_clipboard)
+            hou.ui.displayMessage("Copied to clipboard")
         else:
-            self.app.logger.debug(
-                "Currently copying to clipboard is only supported on Windows."
-            )
+            msg = "Currently copying to clipboard is only supported on Windows."
+            hou.ui.displayMessage(msg)
+            self.app.logger.debug(msg)
 
     def setup_light_groups(
         self,
@@ -846,6 +861,26 @@ class TkRenderManNodeHandler(object):
             fields["height"] = resolution_y
 
         return render_template.apply_fields(fields).replace(os.sep, "/")
+
+    def get_output_path_aov_name(self, output_path: str) -> Optional[str]:
+        """
+        Get the aov name from an output path
+
+        Args:
+            output_path: File path of the output
+
+        Returns:
+            str: Name of the aov
+        """
+        render_template = self.app.get_template("output_render_template")
+        fields = render_template.get_fields(
+            output_path.replace(os.sep, "/").replace(".xml", ".exr")
+        )
+
+        if "aov_name" in fields:
+            return fields["aov_name"]
+        else:
+            return None
 
     def get_output_paths(self, node: hou.Node) -> list[str]:
         paths = []

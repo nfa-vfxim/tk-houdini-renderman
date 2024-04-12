@@ -24,9 +24,7 @@ def copy_to_clipboard(node: hou.Node):
 
     eng = sgtk.platform.current_engine()
     app = eng.apps["tk-houdini-renderman"]
-    app.copy_to_clipboard(node.node("render"))
-
-    hou.ui.displayMessage("Copied path to clipboard.")
+    app.copy_to_clipboard(node)
 
 
 def setup_light_groups(node: hou.Node) -> bool:
