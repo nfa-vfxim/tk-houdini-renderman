@@ -346,7 +346,7 @@ output_files = [
         OutputIdentifier.DEEP,
         True,
         Bitdepth.HALF,
-        Compression.DWAA,
+        Compression.ZIPS,
         [
             AOVOption(
                 "deep",
