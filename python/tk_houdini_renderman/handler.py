@@ -27,7 +27,12 @@ import re
 
 import hou
 import sgtk
-from PySide2.QtWidgets import QMessageBox
+
+# Houdini 21+ ships PySide6 only, older versions PySide2.
+try:
+    from PySide6.QtWidgets import QMessageBox
+except ImportError:
+    from PySide2.QtWidgets import QMessageBox
 
 from .farm_dialog import FarmSubmission
 from ..datamodel import aov_file
